@@ -390,8 +390,7 @@ void leave_callback(esp_zb_zdp_status_t zdo_status, void *args)
 
 void leave_action()
 {
-    uint16_t short_address = esp_zb_get_short_address();
-    if (short_address != 0xfffe)
+    if (esp_zb_bdb_dev_joined())
     {
         ESP_LOGI(TAG, "Leaving network");
         #ifdef DEEP_SLEEP
@@ -716,7 +715,7 @@ void gm_main_loop_task(void *arg)
             }
             if (((uxBits & SHALL_DISABLE_ZIGBEE) != 0) && zigbee_task_handle != NULL)
             {
-                ESP_LOGD(TAG, "Stoping zigbee radio functionality");
+                ESP_LOGI(TAG, "Stoping zigbee radio functionality");
                 // TODO: see how the ADC task terminates.
                 // depends on https://github.com/espressif/esp-zigbee-sdk/issues/561
                 // at the end it is required to set:
@@ -989,21 +988,32 @@ esp_err_t esp_zb_power_save_init(void)
     esp_err_t rc = ESP_OK;
 #ifdef CONFIG_PM_ENABLE
     int cur_cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+    #if defined(DEEP_SLEEP) || defined(LIGHT_SLEEP)
+    #ifdef DEEP_SLEEP
     esp_pm_config_t pm_config = {
         .max_freq_mhz = cur_cpu_freq_mhz,
         .min_freq_mhz = cur_cpu_freq_mhz,
-#if CONFIG_FREERTOS_USE_TICKLESS_IDLE
-    // TODO: explore why this causes a problem
-    // When the device enters deep sleep after a 3s period
-    // caused by the counter going up one tick
-    // the device wakes up on RTC automatically and this
-    // is not desired as it will turn on Zigbee radio
-    // as it is defined in code
+    #if CONFIG_FREERTOS_USE_TICKLESS_IDLE
+        // TODO: explore why this causes a problem
+        // When the device enters deep sleep after a 3s period
+        // caused by the counter going up one tick
+        // the device wakes up on RTC automatically and this
+        // is not desired as it will turn on Zigbee radio
+        // as it is defined in code
 
-    // .light_sleep_enable = true
-#endif
+        // .light_sleep_enable = true
+    #endif
     };
+    #endif
+    #ifdef LIGHT_SLEEP
+    esp_pm_config_t pm_config = {
+        .max_freq_mhz = cur_cpu_freq_mhz,
+        .min_freq_mhz = cur_cpu_freq_mhz,
+        .light_sleep_enable = true
+    };
+    #endif
     rc = esp_pm_configure(&pm_config);
+    #endif
 #endif
     return rc;
 }

@@ -9,6 +9,7 @@
  * You may use, modify, and share this work for personal and non-commercial purposes, as long
  * as you credit the original author(s) and share any derivatives under the same license.
  */
+#include "esp_zb_gas_meter.h"
 #ifdef MEASURE_BATTERY_LEVEL
 
 #include "sys/time.h"

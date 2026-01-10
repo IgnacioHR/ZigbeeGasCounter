@@ -9,8 +9,6 @@
  * You may use, modify, and share this work for personal and non-commercial purposes, as long
  * as you credit the original author(s) and share any derivatives under the same license.
  */
-#ifdef MEASURE_BATTERY_LEVEL
-
 #include <string.h>
 #include "esp_check.h"
 #include "driver/gpio.h"
@@ -18,6 +16,9 @@
 #include "zcl/esp_zigbee_zcl_metering.h"
 
 #include "esp_zb_gas_meter.h"
+
+#ifdef MEASURE_BATTERY_LEVEL
+
 #include "esp_zb_gas_meter_zigbee.h"
 #include "esp_zb_gas_meter_adc.h"
 #include "esp_zb_gas_meter_adc_zigbee.h"

@@ -469,7 +469,15 @@ void esp_zb_task(void *pvParameters)
             .keep_alive = ED_KEEP_ALIVE,    // 3 seconds
         },
     };
+    #if defined(DEEP_SLEEP) || defined(LIGHT_SLEEP)
     esp_zb_sleep_enable(true);
+    #endif
+    #ifdef LIGHT_SLEEP
+    if (!esp_zb_get_rx_on_when_idle()) {
+        esp_zb_set_rx_on_when_idle(true);
+    }
+    #endif
+
     ESP_LOGD(TAG, "esp_zb_init...");
     esp_zb_init(&zb_nwk_cfg);
 
@@ -623,7 +631,7 @@ void esp_zb_task(void *pvParameters)
                                         ESP_ZB_ZCL_ATTR_TYPE_U24,
                                         ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY,
                                         &divisor));                   
-    #ifdef MEASURE_INSTANTANEOUS_DEMAND
+    #ifdef MEASURE_FLOW_RATE
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(esp_zb_metering_server_cluster,
                                         ESP_ZB_ZCL_CLUSTER_ID_METERING,
                                         ESP_ZB_ZCL_ATTR_METERING_INSTANTANEOUS_DEMAND_ID,  // ID del atributo instantaneousDemand
@@ -693,7 +701,7 @@ void esp_zb_task(void *pvParameters)
     ESP_ERROR_CHECK(esp_zb_zcl_start_attr_reporting(current_summation_delivered_location_info));
     ESP_ERROR_CHECK(update_reporting(&current_summation_delivered_location_info, (uint32_t)COUNTER_REPORT_DIFF));
 
-    #ifdef MEASURE_INSTANTANEOUS_DEMAND
+    #ifdef MEASURE_FLOW_RATE
     esp_zb_zcl_attr_location_info_t instantaneous_demand_location_info = {
         .attr_id = ESP_ZB_ZCL_ATTR_METERING_INSTANTANEOUS_DEMAND_ID,
         .cluster_id = ESP_ZB_ZCL_CLUSTER_ID_METERING,
@@ -748,6 +756,10 @@ void esp_zb_task(void *pvParameters)
     esp_zb_set_tx_power(IEEE802154_TXPOWER_VALUE_MAX);
     ESP_ERROR_CHECK(esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
     ESP_ERROR_CHECK(esp_zb_set_secondary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
+    #ifdef LIGHT_SLEEP
+    ret = esp_zb_sleep_set_threshold(20);
+    ESP_RETURN_ON_FALSE(ret == ESP_OK, , TAG, "Failed to set threshold for light sleep");
+    #endif
 
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_stack_main_loop();
@@ -781,7 +793,7 @@ void gm_main_loop_zigbee_task(void *arg)
             ,pdTRUE
             ,pdMS_TO_TICKS(250)
         );
-        if (!leaving_network) {
+        if (!leaving_network && esp_zb_bdb_dev_joined()) {
             if (uxBits != 0) {
                 // Note we must manually clear the bits to avoid infinite loop
                 xEventGroupClearBits(report_event_group_handle, uxBits);
@@ -895,6 +907,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         ESP_LOGV(TAG, "Can sleep");
+        esp_zb_sleep_now();
         break;
     default:
         ESP_LOGD(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type, esp_err_to_name(err_status));
