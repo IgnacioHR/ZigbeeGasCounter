@@ -33,9 +33,9 @@ uint8_t battery_voltage = 0;
 uint8_t battery_percentage = 0;
 uint32_t battery_alarm_state = 0;
 
-#define M                       (MAX_BATTERY_VOLTAGE / ADC_MAX_VALUE)
+#define M                       ((double)MAX_BATTERY_VOLTAGE / (double)ADC_MAX_VALUE)
 #define ADC_MIN_VALUE           (((double)MIN_BATTERY_VOLTAGE)/M)
-#define TO_PERCENTAGE           (200.0 / (ADC_MAX_VALUE - ADC_MIN_VALUE))
+#define TO_PERCENTAGE           (double)(200.0 / ((double)ADC_MAX_VALUE - (double)ADC_MIN_VALUE))
 
 // required by the Zigbee power cluster attributes
 uint8_t battery_voltage_min = UINT8_C(MIN_BATTERY_VOLTAGE/100);
@@ -228,9 +228,9 @@ void adc_task(void *arg)
                 error = adc_cali_raw_to_voltage(adc1_cali_chan0_handle, average, &voltage); // voltage in millivolts
                 if (error == ESP_OK) {
                     // convert to 1s li-ion range
-                    float bat_voltage = (float)(voltage * MAX_BATTERY_VOLTAGE / ADC_MAX_VALUE); // battery voltage from adc readings in millivolts, range to 4200 mv
+                    float bat_voltage = (float)(voltage * (float)MAX_BATTERY_VOLTAGE / (float)ADC_MAX_VALUE); // battery voltage from adc readings in millivolts, range to 4200 mv
                     battery_voltage = (uint8_t)(bat_voltage/100.0+0.5); // Zigbee Specification, one byte, 0x00 to 0xff, in units of 100mv
-                    battery_percentage = (uint8_t)(((float)average - ADC_MIN_VALUE)*TO_PERCENTAGE); // from 0 to 200
+                    battery_percentage = (uint8_t)(((double)average - ADC_MIN_VALUE)*TO_PERCENTAGE); // from 0 to 200
                     if (battery_percentage > 200) {
                         battery_percentage = 200;
                         battery_alarm_state |= ESP_ZB_ZCL_POWER_CONFIG_MAINS_ALARM_MASK_VOLTAGE_HIGH;
@@ -244,7 +244,7 @@ void adc_task(void *arg)
                         battery_alarm_state &= ~ESP_ZB_ZCL_POWER_CONFIG_MAINS_ALARM_MASK_VOLTAGE_UNAVAIL; // reset battery alarm state
                         xEventGroupSetBits(report_event_group_handle, BATTERY_REPORT);
                     }
-                    if (voltage < WARN_BATTERY_VOLTAGE) {
+                    if (bat_voltage < WARN_BATTERY_VOLTAGE) {
                         battery_alarm_state |= ESP_ZB_ZCL_POWER_CONFIG_MAINS_ALARM_MASK_VOLTAGE_LOW; // BatteryVoltageMinThreshold or BatteryPercentageMinThreshold reached for Battery Source 1
                         xEventGroupSetBits(report_event_group_handle, BATTERY_REPORT);
                     } else {

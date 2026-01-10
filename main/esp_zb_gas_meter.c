@@ -40,7 +40,8 @@
 #define MAIN_BTN GPIO_NUM_0
 
 // amount of time to ignore a digital input pin interrupt repetition
-#define DEBOUNCE_TIMEOUT 5 /* milliseconds */
+#define REED_DEBOUNCE_TIMEOUT 1000 /* milliseconds */
+#define BTN_DEBOUNCE_TIMEOUT 30 /* milliseconds */
 
 /* Human interaction and device configuration */
 
@@ -58,6 +59,9 @@ const char *TAG = "MICASA_GAS_METER";
 
 // Last time a pulse was received
 RTC_DATA_ATTR struct timeval last_pulse_time;
+
+// last time an interrupt occurred
+struct timeval last_interrupt_time;
 
 // When the main button is pressed a one time task is started
 // to detect a long press without having to wait until
@@ -328,7 +332,7 @@ void gm_counter_increment(const struct timeval *now, bool fromISR)
         time_diff_ms = (now->tv_sec - last_pulse_time.tv_sec) * 1000 +
                        (now->tv_usec - last_pulse_time.tv_usec) / 1000;
         // debounce
-        debounce = time_diff_ms > 0 && time_diff_ms < 500;
+        debounce = time_diff_ms > 0 && time_diff_ms < 3000;
         #ifdef MEASURE_FLOW_RATE
         compute_instantaneous_demand = time_diff_ms > 0 && !debounce;
         #endif
@@ -883,10 +887,12 @@ void IRAM_ATTR gpio_pulse_isr_handler(void *arg)
 {
     struct timeval now;
     gettimeofday(&now, NULL);
-    if ((last_pulse_time.tv_sec != 0 || last_pulse_time.tv_usec != 0) && time_diff_ms(&last_pulse_time) <= DEBOUNCE_TIMEOUT)
+    if ((last_interrupt_time.tv_sec != 0 || last_interrupt_time.tv_usec != 0) && time_diff_ms(&last_interrupt_time) <= REED_DEBOUNCE_TIMEOUT)
     {
         return; // DEBOUNCE
     }
+    last_interrupt_time.tv_sec = now.tv_sec;
+    last_interrupt_time.tv_usec = now.tv_usec;
 
     // Increment current_summation_delivery
     // read pin to determine failing or raising edge
@@ -922,7 +928,7 @@ void IRAM_ATTR gpio_btn_isr_handler(void *arg)
     int level = gpio_get_level(MAIN_BTN);
     int64_t current_time = esp_timer_get_time();
     int64_t time_diff_ms = (current_time - last_main_btn_time) / 1000;
-    if (last_main_btn_time > 0 && time_diff_ms <= DEBOUNCE_TIMEOUT)
+    if (last_main_btn_time > 0 && time_diff_ms <= BTN_DEBOUNCE_TIMEOUT)
         return; // DEBOUNCE
 
     BaseType_t mustYield = pdFALSE;
