@@ -37,10 +37,12 @@ esp_zb_uint48_t current_summation_delivered = {
 
 uint8_t device_status = 0x0;
 uint64_t device_extended_status = 0x0;
+#ifdef MEASURE_FLOW_RATE
 esp_zb_int24_t instantaneous_demand = {
     .low = 0,
     .high = 0
 };
+#endif
 
 struct timeval last_report_sent_time = {0};
 uint64_t last_summation_sent = 0;
@@ -226,6 +228,7 @@ esp_zb_zcl_status_t zb_radio_setup_report_values(EventBits_t uxBits)
             return status;
         }
     }
+    #ifdef MEASURE_FLOW_RATE
     if ((uxBits & INSTANTANEOUS_DEMAND_REPORT) == INSTANTANEOUS_DEMAND_REPORT) {
         status = esp_zb_zcl_set_attribute_val(MY_METERING_ENDPOINT,
             ESP_ZB_ZCL_CLUSTER_ID_METERING, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
@@ -235,6 +238,8 @@ esp_zb_zcl_status_t zb_radio_setup_report_values(EventBits_t uxBits)
             return status;
         }
     }
+    #endif
+    #ifdef MEASURE_BATTERY_LEVEL
     if ((uxBits & BATTERY_REPORT) == BATTERY_REPORT) {
         status = esp_zb_zcl_set_attribute_val(MY_METERING_ENDPOINT,
             ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
@@ -258,6 +263,7 @@ esp_zb_zcl_status_t zb_radio_setup_report_values(EventBits_t uxBits)
             return status;
         }
     }
+    #endif
     if ((uxBits & STATUS_REPORT) == STATUS_REPORT) {
         status = esp_zb_zcl_set_attribute_val(MY_METERING_ENDPOINT,
             ESP_ZB_ZCL_CLUSTER_ID_METERING, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
@@ -301,6 +307,7 @@ esp_zb_zcl_status_t zb_radio_send_values(EventBits_t uxBits)
         ESP_LOGI(TAG, "CurrentSummationDelivered reported");
     }
 
+    #ifdef MEASURE_FLOW_RATE
     if ((uxBits & INSTANTANEOUS_DEMAND_REPORT) == INSTANTANEOUS_DEMAND_REPORT) {
         report_attr_cmd.clusterID = ESP_ZB_ZCL_CLUSTER_ID_METERING;
         report_attr_cmd.attributeID = ESP_ZB_ZCL_ATTR_METERING_INSTANTANEOUS_DEMAND_ID;
@@ -311,7 +318,8 @@ esp_zb_zcl_status_t zb_radio_send_values(EventBits_t uxBits)
         }
         ESP_LOGI(TAG, "InstantaneousDemand reported");
     }
-
+    #endif
+    #ifdef MEASURE_BATTERY_LEVEL
     if ((uxBits & BATTERY_REPORT) == BATTERY_REPORT) {
         report_attr_cmd.clusterID = ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG;
         report_attr_cmd.attributeID = ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID;
@@ -330,6 +338,7 @@ esp_zb_zcl_status_t zb_radio_send_values(EventBits_t uxBits)
         }
         ESP_LOGI(TAG, "BatteryAlarmState reported");
     }
+    #endif
 
     if ((uxBits & STATUS_REPORT) == STATUS_REPORT) {
         report_attr_cmd.clusterID = ESP_ZB_ZCL_CLUSTER_ID_METERING;
@@ -499,6 +508,7 @@ void esp_zb_task(void *pvParameters)
     esp_zb_attribute_list_t *esp_zb_identify_cluster = esp_zb_identify_cluster_create(&identify_cfg);
 
     /* power cluster */
+    #ifdef MEASURE_BATTERY_LEVEL
     esp_zb_power_config_cluster_cfg_t power_cfg = {
         .main_voltage = 0,
         .main_freq = 0,
@@ -540,6 +550,7 @@ void esp_zb_task(void *pvParameters)
     ESP_ERROR_CHECK(esp_zb_power_config_cluster_add_attr(esp_zb_power_cluster,
                                         ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_QUANTITY_ID,
                                         &battery_quantity));
+    #endif
 
     /* metering cluster */
 
@@ -612,13 +623,14 @@ void esp_zb_task(void *pvParameters)
                                         ESP_ZB_ZCL_ATTR_TYPE_U24,
                                         ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY,
                                         &divisor));                   
-
+    #ifdef MEASURE_INSTANTANEOUS_DEMAND
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(esp_zb_metering_server_cluster,
                                         ESP_ZB_ZCL_CLUSTER_ID_METERING,
                                         ESP_ZB_ZCL_ATTR_METERING_INSTANTANEOUS_DEMAND_ID,  // ID del atributo instantaneousDemand
                                         ESP_ZB_ZCL_ATTR_TYPE_S24,  // Tipo int24_t con signo
                                         ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING,
                                         &instantaneous_demand));
+    #endif
 
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(esp_zb_metering_server_cluster,
                                         ESP_ZB_ZCL_CLUSTER_ID_METERING,
@@ -652,7 +664,9 @@ void esp_zb_task(void *pvParameters)
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(esp_zb_meter_cluster_list, esp_zb_identify_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(esp_zb_meter_cluster_list, esp_zb_identify_client_cluster, ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_metering_cluster(esp_zb_meter_cluster_list, esp_zb_metering_server_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    #ifdef MEASURE_BATTERY_LEVEL
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_power_config_cluster(esp_zb_meter_cluster_list, esp_zb_power_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
+    #endif
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_ota_cluster(esp_zb_meter_cluster_list, esp_zb_ota_cluster, ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     esp_zb_ep_list_t *esp_zb_ep_meter_list = esp_zb_ep_list_create();
@@ -679,6 +693,7 @@ void esp_zb_task(void *pvParameters)
     ESP_ERROR_CHECK(esp_zb_zcl_start_attr_reporting(current_summation_delivered_location_info));
     ESP_ERROR_CHECK(update_reporting(&current_summation_delivered_location_info, (uint32_t)COUNTER_REPORT_DIFF));
 
+    #ifdef MEASURE_INSTANTANEOUS_DEMAND
     esp_zb_zcl_attr_location_info_t instantaneous_demand_location_info = {
         .attr_id = ESP_ZB_ZCL_ATTR_METERING_INSTANTANEOUS_DEMAND_ID,
         .cluster_id = ESP_ZB_ZCL_CLUSTER_ID_METERING,
@@ -688,6 +703,7 @@ void esp_zb_task(void *pvParameters)
     };
     ESP_ERROR_CHECK(esp_zb_zcl_start_attr_reporting(instantaneous_demand_location_info));
     ESP_ERROR_CHECK(update_reporting(&instantaneous_demand_location_info, 0));
+    #endif
 
     esp_zb_zcl_attr_location_info_t  percentage_location_info = {
         .attr_id = ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
@@ -752,11 +768,18 @@ void gm_main_loop_zigbee_task(void *arg)
         // number of bits to be set before continuing, this is the reason we wait for
         // all bits to be set.
         EventBits_t uxBits = xEventGroupWaitBits(
-            report_event_group_handle, 
-            CURRENT_SUMMATION_DELIVERED_REPORT | INSTANTANEOUS_DEMAND_REPORT | STATUS_REPORT | EXTENDED_STATUS_REPORT | BATTERY_REPORT,
-            pdTRUE,
-            pdTRUE,
-            pdMS_TO_TICKS(250)
+            report_event_group_handle
+            ,CURRENT_SUMMATION_DELIVERED_REPORT 
+            #ifdef MEASURE_INSTANTANEOUS_DEMAND
+            | INSTANTANEOUS_DEMAND_REPORT
+            #endif
+            | STATUS_REPORT | EXTENDED_STATUS_REPORT 
+            #ifdef MEASURE_BATTERY_LEVEL
+            | BATTERY_REPORT
+            #endif
+            ,pdTRUE
+            ,pdTRUE
+            ,pdMS_TO_TICKS(250)
         );
         if (!leaving_network) {
             if (uxBits != 0) {
@@ -765,8 +788,12 @@ void gm_main_loop_zigbee_task(void *arg)
                 esp_zb_zcl_status_t status = ESP_ZB_ZCL_STATUS_SUCCESS;
                 ESP_LOGI(TAG, "Reporting to client Sum=%s, Instant=%s, Bat=%s, Status=%s, Exten=%s", 
                     ((uxBits & CURRENT_SUMMATION_DELIVERED_REPORT) != 0) ? "Yes": "No",
+                    #ifdef MEASURE_INSTANTANEOUS_DEMAND
                     ((uxBits & INSTANTANEOUS_DEMAND_REPORT) != 0) ? "Yes": "No",
+                    #endif
+                    #ifdef MEASURE_BATTERY_LEVEL
                     ((uxBits & BATTERY_REPORT) != 0) ? "Yes": "No",
+                    #endif
                     ((uxBits & STATUS_REPORT) != 0) ? "Yes": "No",
                     ((uxBits & EXTENDED_STATUS_REPORT) != 0) ? "Yes": "No"
                 );
@@ -783,11 +810,13 @@ void gm_main_loop_zigbee_task(void *arg)
                     last_summation_sent <<= 32;
                     last_summation_sent |= current_summation_delivered.low;
                 }
+                #ifdef DEEP_SLEEP
                 if (deep_sleep_task_handle != NULL) {
                     TickType_t deep_sleep_time = dm_deep_sleep_time_ms();
                     if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
                         ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
                 }
+                #endif
             }
         }
     }

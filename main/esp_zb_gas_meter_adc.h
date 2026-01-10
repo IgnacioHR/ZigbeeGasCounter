@@ -9,6 +9,8 @@
  * You may use, modify, and share this work for personal and non-commercial purposes, as long
  * as you credit the original author(s) and share any derivatives under the same license.
  */
+#ifdef MEASURE_BATTERY_LEVEL
+
 #include "sys/time.h"
 #include "freertos/task.h"
 #include "esp_sleep.h"
@@ -24,3 +26,4 @@ extern TaskHandle_t adc_task_handle;
 extern RTC_DATA_ATTR struct timeval last_battery_measurement_time;
 
 void adc_task(void *arg);
+#endif

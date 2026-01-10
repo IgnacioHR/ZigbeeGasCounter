@@ -9,6 +9,8 @@
  * You may use, modify, and share this work for personal and non-commercial purposes, as long
  * as you credit the original author(s) and share any derivatives under the same license.
  */
+#ifdef MEASURE_BATTERY_LEVEL
+
 #include <string.h>
 #include "esp_check.h"
 #include "driver/gpio.h"
@@ -284,3 +286,4 @@ void adc_task(void *arg)
         ESP_LOGI(TAG, "Finishing battery measures");
     }
 }
+#endif

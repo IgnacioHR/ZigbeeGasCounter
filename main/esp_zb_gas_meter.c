@@ -39,8 +39,6 @@
 // input - pin for the main button
 #define MAIN_BTN GPIO_NUM_0
 
-#define EXTERNAL_ANTENNA
-
 // amount of time to ignore a digital input pin interrupt repetition
 #define DEBOUNCE_TIMEOUT 5 /* milliseconds */
 
@@ -52,7 +50,9 @@
 #define NVS_NAMESPACE "gas_monitor"
 #define NVS_KEY "counter"
 
+#ifdef MEASURE_FLOW_RATE
 #define TIME_TO_RESET_INSTANTANEOUS_D UINT32_C(TIME_TO_SLEEP_ZIGBEE_ON - 2000)
+#endif
 
 const char *TAG = "MICASA_GAS_METER";
 
@@ -62,7 +62,9 @@ RTC_DATA_ATTR struct timeval last_pulse_time;
 // When the main button is pressed a one time task is started
 // to detect a long press without having to wait until
 // the user releases the button
+#ifdef DEEP_SLEEP
 bool started_from_deep_sleep = false;
+#endif
 
 // true while leaving the network to prevent sending data to coordinator
 bool leaving_network = false;
@@ -73,14 +75,22 @@ RTC_DATA_ATTR struct timeval sleep_enter_time;
 // Non volatile memory handle
 nvs_handle_t my_nvs_handle;
 
+#ifdef MEASURE_BATTERY_LEVEL
 TaskHandle_t adc_task_handle = NULL;
+#endif
 TaskHandle_t zigbee_task_handle = NULL;
+#ifdef DEEP_SLEEP
 TaskHandle_t deep_sleep_task_handle = NULL;
+#endif
 TaskHandle_t save_counter_task_handle = NULL;
 TaskHandle_t btn_press_task_handle = NULL;
 TaskHandle_t btn_release_task_handle = NULL;
+#ifdef DEEP_SLEEP
 QueueHandle_t deep_sleep_queue_handle = NULL;
+#endif
+#ifdef MEASURE_FLOW_RATE
 TimerHandle_t reset_instantaneous_demand_timer = NULL;
+#endif
 TimerHandle_t deep_sleep_timer = NULL;
 EventGroupHandle_t report_event_group_handle = NULL;
 EventGroupHandle_t main_event_group_handle = NULL;
@@ -155,12 +165,14 @@ void save_counter_task(void *arg)
         {
             nvs_commit(my_nvs_handle);
             ESP_LOGI(TAG, "Counter stored: low=%lu high=%d", current_summation_delivered.low, current_summation_delivered.high);
+            #ifdef DEEP_SLEEP
             if (deep_sleep_task_handle != NULL)
             {
                 TickType_t deep_sleep_time = dm_deep_sleep_time_ms();
                 if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
                     ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
             }
+            #endif
         }
         else
         {
@@ -229,6 +241,7 @@ void check_shall_enable_radio()
     }
 }
 
+#ifdef MEASURE_BATTERY_LEVEL
 // Computes if it is needed to measure battery voltage
 void check_shall_measure_battery()
 {
@@ -243,7 +256,9 @@ void check_shall_measure_battery()
         xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
     }
 }
+#endif
 
+#ifdef MEASURE_FLOW_RATE
 // After two consecutive values of current_summation_delivered this method
 // computes the instantaneous_demand
 // NOTE: there is one special task to set instantaneous demand to 0 when no
@@ -290,6 +305,7 @@ void gm_compute_instantaneous_demand(int time_diff_ms, bool fromISR)
         }
     }
 }
+#endif
 
 // Adds one to current_summation_delivered and nothing else
 void gm_counter_increment(const struct timeval *now, bool fromISR)
@@ -303,7 +319,9 @@ void gm_counter_increment(const struct timeval *now, bool fromISR)
         taskENTER_CRITICAL(&counter_spinlock);
     }
     bool debounce = false;
+    #ifdef MEASURE_FLOW_RATE
     bool compute_instantaneous_demand = false;
+    #endif
     int time_diff_ms = 0;
     if (last_pulse_time.tv_sec != 0 || last_pulse_time.tv_usec != 0)
     {
@@ -311,7 +329,9 @@ void gm_counter_increment(const struct timeval *now, bool fromISR)
                        (now->tv_usec - last_pulse_time.tv_usec) / 1000;
         // debounce
         debounce = time_diff_ms > 0 && time_diff_ms < 500;
+        #ifdef MEASURE_FLOW_RATE
         compute_instantaneous_demand = time_diff_ms > 0 && !debounce;
+        #endif
     }
     if (!debounce)
     {
@@ -351,8 +371,10 @@ void gm_counter_increment(const struct timeval *now, bool fromISR)
         xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
         xTaskNotifyGive(save_counter_task_handle);
     }
+    #ifdef MEASURE_FLOW_RATE
     if (compute_instantaneous_demand)
         gm_compute_instantaneous_demand(time_diff_ms, fromISR);
+    #endif
 }
 
 // function called when the device leaves the zigee network
@@ -368,7 +390,9 @@ void leave_action()
     if (short_address != 0xfffe)
     {
         ESP_LOGI(TAG, "Leaving network");
+        #ifdef DEEP_SLEEP
         xEventGroupSetBits(main_event_group_handle, SHALL_STOP_DEEP_SLEEP);
+        #endif
         leaving_network = true;
         esp_zb_zdo_mgmt_leave_req_param_t leave_request = {
             .device_address = {},
@@ -382,6 +406,7 @@ void leave_action()
     }
 }
 
+#ifdef DEEP_SLEEP
 // Compute how long to wait for sleep depending on device conditions
 TickType_t dm_deep_sleep_time_ms()
 {
@@ -389,6 +414,7 @@ TickType_t dm_deep_sleep_time_ms()
     ESP_LOGD(TAG, "Start one-shot timer for %ldms to enter the deep sleep", before_deep_sleep_time_ms);
     return pdMS_TO_TICKS(before_deep_sleep_time_ms);
 }
+
 
 // task to govern the deep sleep timeout
 void deep_sleep_controller_task(void *arg)
@@ -422,6 +448,7 @@ void deep_sleep_controller_task(void *arg)
         }
     }
 }
+#endif
 
 // task to manage main button press events
 void btn_press_task(void *arg)
@@ -438,11 +465,13 @@ void btn_press_task(void *arg)
         TickType_t current_time_since_hold = xTimerGetPeriod(t_detect_hold);
         TickType_t click_press_time_adjusted = CLICK_PRESS_TIME_MS;
         TickType_t hold_time_adjusted = CLICK_HOLD_TIME_MS;
+        #ifdef DEEP_SLEEP
         if (started_from_deep_sleep)
         {
             click_press_time_adjusted = pdMS_TO_TICKS(click_press_time_adjusted - 150); // measured time for the device to start
             hold_time_adjusted -= pdMS_TO_TICKS(hold_time_adjusted - 150);
         }
+        #endif
         if (current_time_since_press != click_press_time_adjusted && xTimerChangePeriod(timer_since_press_handler, click_press_time_adjusted, pdMS_TO_TICKS(100)) != pdPASS)
         {
             ESP_LOGE(TAG, "Can't set press timer time to %dms", click_press_time_adjusted);
@@ -542,12 +571,14 @@ void btn_task(void *arg)
                 ESP_LOGI(TAG, "Button press");
                 led_on();
                 xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
+                #ifdef DEEP_SLEEP
                 if (deep_sleep_task_handle != NULL)
                 {
                     TickType_t deep_sleep_time = pdMS_TO_TICKS(TIME_TO_SLEEP_ZIGBEE_ON);
                     if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
                         ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
                 }
+                #endif
                 break;
             case RELEASE:
                 ESP_LOGI(TAG, "Button release");
@@ -555,8 +586,14 @@ void btn_task(void *arg)
             case SINGLE_CLICK:
                 ESP_LOGI(TAG, "Single click detected");
                 xEventGroupSetBits(report_event_group_handle,
-                    CURRENT_SUMMATION_DELIVERED_REPORT | BATTERY_REPORT | STATUS_REPORT | EXTENDED_STATUS_REPORT);
+                    CURRENT_SUMMATION_DELIVERED_REPORT | 
+                    #ifdef MEASURE_BATTERY_LEVEL
+                    BATTERY_REPORT | 
+                    #endif
+                    STATUS_REPORT | EXTENDED_STATUS_REPORT);
+                #ifdef MEASURE_BATTERY_LEVEL
                 xEventGroupSetBits(main_event_group_handle, SHALL_MEASURE_BATTERY);
+                #endif
                 // reset device status
                 device_status = 0x0;
                 device_extended_status = 0x0;
@@ -590,6 +627,7 @@ void btn_task(void *arg)
     }
 }
 
+#ifdef MEASURE_FLOW_RATE
 // set the instantaneous demand to 0 and indicates to report this value
 void reset_instantaneous_demand_cb(TimerHandle_t xTimer)
 {
@@ -601,6 +639,7 @@ void reset_instantaneous_demand_cb(TimerHandle_t xTimer)
         xEventGroupSetBits(report_event_group_handle, INSTANTANEOUS_DEMAND_REPORT);
     }
 }
+#endif
 
 // device main loop activities, note
 // zigbee activities are not part of the
@@ -610,18 +649,30 @@ void gm_main_loop_task(void *arg)
 {
     ESP_LOGI(TAG, "Main loop task started");
     ESP_ERROR_CHECK(check_boot_partition_change());
+    #ifdef DEEP_SLEEP
+    // start deep sleep controller
     xEventGroupSetBits(main_event_group_handle, SHALL_START_DEEP_SLEEP);
+    #endif
     while (true)
     {
         EventBits_t uxBits = xEventGroupWaitBits(
-            main_event_group_handle,
-            SHALL_ENABLE_ZIGBEE | SHALL_MEASURE_BATTERY | SHALL_DISABLE_ZIGBEE | SHALL_START_DEEP_SLEEP | SHALL_STOP_DEEP_SLEEP,
-            pdTRUE, // clear on exit
-            pdFALSE,
-            pdMS_TO_TICKS(250));
+            main_event_group_handle
+            , SHALL_ENABLE_ZIGBEE
+            #ifdef MEASURE_BATTERY_LEVEL 
+            | SHALL_MEASURE_BATTERY
+            #endif
+            | SHALL_DISABLE_ZIGBEE
+            #ifdef DEEP_SLEEP
+            | SHALL_START_DEEP_SLEEP
+            | SHALL_STOP_DEEP_SLEEP
+            #endif
+            ,pdTRUE // clear on exit
+            ,pdFALSE
+            ,pdMS_TO_TICKS(250));
         // uxBits = xEventGroupClearBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE | SHALL_MEASURE_BATTERY | SHALL_DISABLE_ZIGBEE | SHALL_START_DEEP_SLEEP | SHALL_STOP_DEEP_SLEEP);
         if (uxBits != 0)
         {
+            #ifdef MEASURE_BATTERY_LEVEL
             if ((uxBits & SHALL_MEASURE_BATTERY) != 0)
             {
                 ESP_LOGI(TAG, "Measuring battery capacity");
@@ -629,10 +680,12 @@ void gm_main_loop_task(void *arg)
                 last_battery_measurement_time.tv_sec += 20; // prevent entering a loop until battery is measured
                 xTaskNotifyGiveIndexed(adc_task_handle, 0);
             }
+            #endif
             if (((uxBits & SHALL_ENABLE_ZIGBEE) != 0) && zigbee_task_handle == NULL)
             {
                 ESP_LOGI(TAG, "Starting zigbee radio functionality");
-#ifdef EXTERNAL_ANTENNA
+                
+                #ifdef EXTERNAL_ANTENNA
                 uint64_t antenna_switch_pin = 1ULL << GPIO_NUM_3;
                 uint64_t antenna_mode_pin = 1ULL << GPIO_NUM_14;
                 gpio_config_t anthena_conf = {
@@ -647,11 +700,13 @@ void gm_main_loop_task(void *arg)
                 ESP_ERROR_CHECK(gpio_set_level(GPIO_NUM_3, 0));
                 vTaskDelay(pdMS_TO_TICKS(100));
                 ESP_ERROR_CHECK(gpio_set_level(GPIO_NUM_14, 1));
-#endif
+                #endif
                 /* Start Zigbee stack task */
+                #ifdef DEEP_SLEEP
                 TickType_t deep_sleep_time = pdMS_TO_TICKS(TIME_TO_SLEEP_ZIGBEE_ON);
                 if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
                     ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
+                #endif
                 if (xTaskCreate(esp_zb_task, "Zigbee_main", 10240, NULL, 10, &zigbee_task_handle) != pdTRUE)
                     ESP_LOGE(TAG, "can't create zigbee task");
             }
@@ -662,15 +717,18 @@ void gm_main_loop_task(void *arg)
                 // depends on https://github.com/espressif/esp-zigbee-sdk/issues/561
                 // at the end it is required to set:
                 //  zigbee_enabled = false;
+                #ifdef DEEP_SLEEP
                 if (deep_sleep_task_handle != NULL)
                 {
                     TickType_t deep_sleep_time = portMAX_DELAY;
                     if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
                         ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
                 }
+                #endif
                 vTaskDelete(zigbee_task_handle);
                 zigbee_task_handle = NULL;
             }
+            #ifdef DEEP_SLEEP
             if (((uxBits & SHALL_START_DEEP_SLEEP) != 0) && deep_sleep_task_handle == NULL)
             {
                 ESP_LOGI(TAG, "Starting deep sleep functionality");
@@ -689,16 +747,20 @@ void gm_main_loop_task(void *arg)
                 vTaskDelete(deep_sleep_task_handle);
                 deep_sleep_task_handle = NULL;
             }
+            #endif
         }
         else
         {
+            #ifdef MEASURE_BATTERY_LEVEL
             check_shall_measure_battery();
+            #endif
             check_shall_enable_radio();
         }
     }
 }
 
 // callback to start deep sleep
+#ifdef DEEP_SLEEP
 void enter_deep_sleep_cb(TimerHandle_t xTimer)
 {
     /* Enter deep sleep */
@@ -743,7 +805,9 @@ esp_err_t gm_deep_sleep_init()
         { // wakeup from MAIN_BTN
             ESP_LOGI(TAG, "Wake up from MAIN BUTTON. Time spent in deep sleep and boot: %dms", sleep_time_ms);
             started_from_deep_sleep = true;
+            #ifdef MEASURE_BATTERY_LEVEL
             xEventGroupSetBits(main_event_group_handle, SHALL_MEASURE_BATTERY);
+            #endif
             xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
             xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
             int level = gpio_get_level(MAIN_BTN);
@@ -790,7 +854,9 @@ esp_err_t gm_deep_sleep_init()
         break;
     }
     check_shall_enable_radio();
+    #ifdef MEASURE_BATTERY_LEVEL
     check_shall_measure_battery();
+    #endif
 
     /* Set the methods of how to wake up: */
     /* 1. RTC timer waking-up */
@@ -810,6 +876,7 @@ esp_err_t gm_deep_sleep_init()
 
     return ESP_OK;
 }
+#endif
 
 // PULSE_PIN - GPIO Interruption handler
 void IRAM_ATTR gpio_pulse_isr_handler(void *arg)
@@ -829,6 +896,7 @@ void IRAM_ATTR gpio_pulse_isr_handler(void *arg)
         // failing
         gm_counter_increment(&now, true);
     }
+    #ifdef DEEP_SLEEP
     else if (deep_sleep_task_handle != NULL)
     {
         // rising, the device while NOT in deep sleep mode. At this moment, if there
@@ -842,6 +910,7 @@ void IRAM_ATTR gpio_pulse_isr_handler(void *arg)
             ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
         portYIELD_FROM_ISR(mustYield);
     }
+    #endif
 }
 
 // MAIN_BTN - GPIO Interruption handler
@@ -859,7 +928,9 @@ void IRAM_ATTR gpio_btn_isr_handler(void *arg)
     BaseType_t mustYield = pdFALSE;
     if (level == 1 && button_state != PRESS)
     {
+        #ifdef DEEP_SLEEP
         started_from_deep_sleep = false;
+        #endif
         vTaskNotifyGiveFromISR(btn_press_task_handle, &mustYield);
     }
     if (level == 0 || button_state == PRESS)
@@ -1001,22 +1072,30 @@ void app_main(void)
     ESP_LOGI(TAG, "Starting Zigbee GasMeter...");
     esp_err_t reset_error = report_reset_reason();
 
+    #ifdef DEEP_SLEEP
     ESP_ERROR_CHECK((deep_sleep_timer = xTimerCreate("deep_sleep_timer", portMAX_DELAY, pdFALSE, "d_s_t", enter_deep_sleep_cb)) == NULL ? ESP_FAIL : ESP_OK);
+    #endif
 
     // intelligent button timers
     ESP_ERROR_CHECK((timer_since_press_handler = xTimerCreate("0.2s_since_press", pdMS_TO_TICKS(CLICK_PRESS_TIME_MS), pdFALSE, "2_t_p", timer_since_press_cb)) == NULL ? ESP_FAIL : ESP_OK);
     ESP_ERROR_CHECK((t_detect_hold = xTimerCreate("4s_since_press", pdMS_TO_TICKS(CLICK_HOLD_TIME_MS), pdFALSE, "4_s_p", timer_detect_hold_cb)) == NULL ? ESP_FAIL : ESP_OK);
     ESP_ERROR_CHECK((timer_since_release_handler = xTimerCreate("0.2s_since_release", pdMS_TO_TICKS(CLICK_RELEASE_TIME_MS), pdFALSE, "2_t_r", timer_since_release_cb)) == NULL ? ESP_FAIL : ESP_OK);
 
+    #ifdef DEEP_SLEEP
     ESP_ERROR_CHECK((deep_sleep_queue_handle = xQueueCreate(1, sizeof(TickType_t))) == NULL ? ESP_FAIL : ESP_OK);
+    #endif
     ESP_ERROR_CHECK((main_event_group_handle = xEventGroupCreate()) == NULL ? ESP_FAIL : ESP_OK);
     ESP_ERROR_CHECK((report_event_group_handle = xEventGroupCreate()) == NULL ? ESP_FAIL : ESP_OK);
     ESP_ERROR_CHECK(xTaskCreate(save_counter_task, "save_counter", 2048, NULL, 15, &save_counter_task_handle) != pdPASS);
     ESP_ERROR_CHECK(xTaskCreate(btn_press_task, "btn_press", 2048, NULL, 5, &btn_press_task_handle) != pdPASS);
     ESP_ERROR_CHECK(xTaskCreate(btn_release_task, "btn_release", 2048, NULL, 5, &btn_release_task_handle) != pdPASS);
     ESP_ERROR_CHECK(xTaskCreate(btn_task, "btn_task", 2048, NULL, 5, &btn_task_handle) != pdPASS);
+    #ifdef MEASURE_BATTERY_LEVEL
     ESP_ERROR_CHECK(xTaskCreate(adc_task, "adc", 4096, NULL, 10, &adc_task_handle) != pdPASS);
+    #endif
+    #ifdef MEASURE_FLOW_RATE
     ESP_ERROR_CHECK((reset_instantaneous_demand_timer = xTimerCreate("reset_inst_dema", pdMS_TO_TICKS(TIME_TO_RESET_INSTANTANEOUS_D), pdFALSE, "r_i_d", reset_instantaneous_demand_cb)) == NULL ? ESP_FAIL : ESP_OK);
+    #endif
 
     if (reset_error != ESP_OK) {
         xEventGroupSetBits(report_event_group_handle, EXTENDED_STATUS_REPORT);
@@ -1026,7 +1105,9 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_zb_power_save_init());
     ESP_ERROR_CHECK(gm_counter_load_nvs());
+    #ifdef DEEP_SLEEP
     ESP_ERROR_CHECK(gm_deep_sleep_init());
+    #endif
     ESP_ERROR_CHECK(config_led());
     led_on();
 
