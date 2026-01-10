@@ -800,7 +800,7 @@ void gm_main_loop_zigbee_task(void *arg)
                 esp_zb_zcl_status_t status = ESP_ZB_ZCL_STATUS_SUCCESS;
                 ESP_LOGI(TAG, "Reporting to client Sum=%s, Instant=%s, Bat=%s, Status=%s, Exten=%s", 
                     ((uxBits & CURRENT_SUMMATION_DELIVERED_REPORT) != 0) ? "Yes": "No",
-                    #ifdef MEASURE_INSTANTANEOUS_DEMAND
+                    #ifdef MEASURE_FLOW_RATE
                     ((uxBits & INSTANTANEOUS_DEMAND_REPORT) != 0) ? "Yes": "No",
                     #endif
                     #ifdef MEASURE_BATTERY_LEVEL
