@@ -15,12 +15,12 @@
 
 // ******************************************************************************
 // Functionality that will be included in the gas meter main application
-#define MEASURE_FLOW_RATE
+//#define MEASURE_FLOW_RATE
 #define MEASURE_BATTERY_LEVEL
 
 // Only one can be defines at a time
-#define DEEP_SLEEP
-//#define LIGHT_SLEEP
+//#define DEEP_SLEEP
+#define LIGHT_SLEEP
 // ******************************************************************************
 
 // ******************************************************************************
@@ -77,5 +77,6 @@ TickType_t dm_deep_sleep_time_ms();
 #endif
 
 void gm_counter_set(const esp_zb_uint48_t *new_value);
+esp_err_t gm_deep_sleep_init();
 
 #endif // ESP_ZB_GAS_METER_H

@@ -50,11 +50,13 @@ uint64_t last_summation_sent = 0;
 // value for the ESP_ZB_ZCL_ATTR_IDENTIFY_IDENTIFY_TIME_ID attribute
 uint16_t identify_time = 0;
 
+#ifdef MEASURE_BATTERY_LEVEL
 uint8_t battery_alarm_mask = ESP_ZB_ZCL_POWER_CONFIG_MAINS_ALARM_MASK_VOLTAGE_LOW | ESP_ZB_ZCL_POWER_CONFIG_MAINS_ALARM_MASK_VOLTAGE_HIGH | ESP_ZB_ZCL_POWER_CONFIG_MAINS_ALARM_MASK_VOLTAGE_UNAVAIL;
 
 uint8_t battery_voltage_rated = RATED_BATTERY_VOLTAGE / 100;
 
 uint8_t battery_quantity = BATTERY_UNITS;
+#endif
 
 // value for the manufacturer_code, At this time this is whatever value 
 // I've never seen before. I don't know if there is a value for DIY devices
@@ -469,13 +471,12 @@ void esp_zb_task(void *pvParameters)
             .keep_alive = ED_KEEP_ALIVE,    // 3 seconds
         },
     };
-    #if defined(DEEP_SLEEP) || defined(LIGHT_SLEEP)
-    esp_zb_sleep_enable(true);
-    #endif
     #ifdef LIGHT_SLEEP
+    esp_zb_sleep_enable(true);
     if (!esp_zb_get_rx_on_when_idle()) {
         esp_zb_set_rx_on_when_idle(true);
     }
+    ESP_ERROR_CHECK(esp_sleep_enable_gpio_wakeup());
     #endif
 
     ESP_LOGD(TAG, "esp_zb_init...");
@@ -713,6 +714,7 @@ void esp_zb_task(void *pvParameters)
     ESP_ERROR_CHECK(update_reporting(&instantaneous_demand_location_info, 0));
     #endif
 
+    #ifdef MEASURE_BATTERY_LEVEL
     esp_zb_zcl_attr_location_info_t  percentage_location_info = {
         .attr_id = ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
         .cluster_id = ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
@@ -732,6 +734,7 @@ void esp_zb_task(void *pvParameters)
     };
     ESP_ERROR_CHECK(esp_zb_zcl_start_attr_reporting(battery_alarm_state_location_info));
     ESP_ERROR_CHECK(update_reporting(&battery_alarm_state_location_info, 0));
+    #endif
 
     esp_zb_zcl_attr_location_info_t status_location_info = {
         .attr_id = ESP_ZB_ZCL_ATTR_METERING_STATUS_ID,
@@ -757,7 +760,7 @@ void esp_zb_task(void *pvParameters)
     ESP_ERROR_CHECK(esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
     ESP_ERROR_CHECK(esp_zb_set_secondary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
     #ifdef LIGHT_SLEEP
-    ret = esp_zb_sleep_set_threshold(20);
+    ret = esp_zb_sleep_set_threshold(1000);
     ESP_RETURN_ON_FALSE(ret == ESP_OK, , TAG, "Failed to set threshold for light sleep");
     #endif
 
@@ -768,6 +771,7 @@ void esp_zb_task(void *pvParameters)
 // top level comissioning callback
 void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
 {
+    ESP_LOGI(TAG, "On start top level commissioning callback...");
     ESP_RETURN_ON_FALSE(esp_zb_bdb_start_top_level_commissioning(mode_mask) == ESP_OK, , TAG, "Failed to start Zigbee bdb commissioning");
 }
 
@@ -790,24 +794,33 @@ void gm_main_loop_zigbee_task(void *arg)
             | BATTERY_REPORT
             #endif
             ,pdTRUE
-            ,pdTRUE
-            ,pdMS_TO_TICKS(250)
+            //#if defined(DEEP_SLEEP)
+            //,pdTRUE
+            //,pdMS_TO_TICKS(250)
+            //#else
+            ,pdFALSE
+            ,portMAX_DELAY
+            //#endif
         );
         if (!leaving_network && esp_zb_bdb_dev_joined()) {
             if (uxBits != 0) {
                 // Note we must manually clear the bits to avoid infinite loop
                 xEventGroupClearBits(report_event_group_handle, uxBits);
                 esp_zb_zcl_status_t status = ESP_ZB_ZCL_STATUS_SUCCESS;
-                ESP_LOGI(TAG, "Reporting to client Sum=%s, Instant=%s, Bat=%s, Status=%s, Exten=%s", 
-                    ((uxBits & CURRENT_SUMMATION_DELIVERED_REPORT) != 0) ? "Yes": "No",
+                ESP_LOGI(TAG, "Reporting to client Sum=%s, Instant=%s, Bat=%s, Status=%s, Exten=%s"
+                    ,((uxBits & CURRENT_SUMMATION_DELIVERED_REPORT) != 0) ? "Yes": "No"
                     #ifdef MEASURE_FLOW_RATE
-                    ((uxBits & INSTANTANEOUS_DEMAND_REPORT) != 0) ? "Yes": "No",
+                    ,((uxBits & INSTANTANEOUS_DEMAND_REPORT) != 0) ? "Yes": "No"
+                    #else
+                    ,"N/A"
                     #endif
                     #ifdef MEASURE_BATTERY_LEVEL
-                    ((uxBits & BATTERY_REPORT) != 0) ? "Yes": "No",
+                    ,((uxBits & BATTERY_REPORT) != 0) ? "Yes": "No"
+                    #else
+                    ,"N/A"
                     #endif
-                    ((uxBits & STATUS_REPORT) != 0) ? "Yes": "No",
-                    ((uxBits & EXTENDED_STATUS_REPORT) != 0) ? "Yes": "No"
+                    ,((uxBits & STATUS_REPORT) != 0) ? "Yes": "No"
+                    ,((uxBits & EXTENDED_STATUS_REPORT) != 0) ? "Yes": "No"
                 );
                 if (esp_zb_lock_acquire(portMAX_DELAY)) {
                     status = zb_radio_setup_report_values(uxBits);
@@ -851,13 +864,18 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     uint32_t *p_sg_p = signal_struct->p_app_signal;
     esp_err_t err_status = signal_struct->esp_err_status;
     esp_zb_app_signal_type_t sig_type = *p_sg_p;
-    ESP_LOGV(TAG, "Shall handle signal 0x%x - %s", sig_type, esp_zb_zdo_signal_to_string(sig_type));
+    ESP_LOGI(TAG, "Shall handle signal 0x%x - %s", sig_type, esp_zb_zdo_signal_to_string(sig_type));
     switch (sig_type) {
     case ESP_ZB_ZDO_SIGNAL_DEFAULT_START:
         ESP_LOGI(TAG, "ZDO DEFAULT START - status: %s", esp_err_to_name(err_status));
         break;
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
         ESP_LOGI(TAG, "Zigbee commissioning");
+        #ifdef DEEP_SLEEP
+        TickType_t deep_sleep_time = portMAX_DELAY;
+        if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
+            ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
+        #endif
         esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
         break;
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
@@ -866,12 +884,22 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             ESP_LOGD(TAG, "Device started up in%s factory-reset mode", esp_zb_bdb_is_factory_new() ? "" : " non");
             if (esp_zb_bdb_is_factory_new()) {
                 ESP_LOGI(TAG, "Start network steering from factory new");
+                #ifdef DEEP_SLEEP
+                TickType_t deep_sleep_time = portMAX_DELAY;
+                if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
+                    ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
+                #endif
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
             } else {
                 ESP_LOGI(TAG, "Device rebooted");
             }
             ESP_LOGD(TAG, "Deferred driver initialization %s", gm_tasks_init() ? "failed" : "successful");
         } else {
+            #ifdef DEEP_SLEEP
+            TickType_t deep_sleep_time = portMAX_DELAY;
+            if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
+                ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
+            #endif
             ESP_LOGW(TAG, "%s failed with status: %s, retrying", esp_zb_zdo_signal_to_string(sig_type),
                      esp_err_to_name(err_status));
             esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb, ESP_ZB_BDB_MODE_INITIALIZATION, 1000);
@@ -879,6 +907,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     case ESP_ZB_BDB_SIGNAL_STEERING:
         if (err_status == ESP_OK) {
+            ESP_LOGI(TAG, "Signal steering successful");
             esp_zb_ieee_addr_t extended_pan_id;
             esp_zb_get_extended_pan_id(extended_pan_id);
             ESP_LOGD(TAG, "Joined network successfully (Extended PAN ID: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, PAN ID: 0x%04hx, Channel:%d, Short Address: 0x%04hx)",
@@ -886,7 +915,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                      extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
                      esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
         } else {
-            ESP_LOGD(TAG, "Network steering was not successful (status: %s)", esp_err_to_name(err_status));
+            ESP_LOGE(TAG, "Network steering was not successful (status: %s)", esp_err_to_name(err_status));
             esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb, ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
         }
         break;
@@ -906,8 +935,22 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         esp_zb_set_node_descriptor_manufacturer_code(manufacturer_code);
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
-        ESP_LOGV(TAG, "Can sleep");
+        #ifdef LIGHT_SLEEP
+        ESP_LOGI(TAG, "Going to sleep");
         esp_zb_sleep_now();
+        ESP_LOGI(TAG, "Wake up from sleep");
+        //esp_err_t err = gm_deep_sleep_init();
+        //if (err != ESP_OK) {
+        //    ESP_LOGE(TAG, "Failed to re-initialize deep sleep: %s", esp_err_to_name(err));
+        //}
+        #endif
+        break;
+    case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:
+        ESP_LOGW(TAG, "Device unavailable signal received");
+        esp_zb_zdo_device_unavailable_params_t *unavail_params = (esp_zb_zdo_device_unavailable_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        ESP_LOGW(TAG, "Device with short address 0x%04x is unavailable", unavail_params->short_addr);
+
+        // esp_restart();
         break;
     default:
         ESP_LOGD(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type, esp_err_to_name(err_status));

@@ -671,7 +671,12 @@ void gm_main_loop_task(void *arg)
             #endif
             ,pdTRUE // clear on exit
             ,pdFALSE
-            ,pdMS_TO_TICKS(250));
+            //#ifdef LIGHT_SLEEP
+            ,portMAX_DELAY
+            //#else
+            //,pdMS_TO_TICKS(250)
+            //#endif
+        );
         // uxBits = xEventGroupClearBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE | SHALL_MEASURE_BATTERY | SHALL_DISABLE_ZIGBEE | SHALL_START_DEEP_SLEEP | SHALL_STOP_DEEP_SLEEP);
         if (uxBits != 0)
         {
@@ -776,6 +781,7 @@ void enter_deep_sleep_cb(TimerHandle_t xTimer)
     gettimeofday(&sleep_enter_time, NULL);
     esp_deep_sleep_start();
 }
+#endif
 
 // configure deep sleep for the gas meter
 esp_err_t gm_deep_sleep_init()
@@ -807,7 +813,9 @@ esp_err_t gm_deep_sleep_init()
         if ((ext1mask & gpio_mainbtn_pin_mask) == gpio_mainbtn_pin_mask)
         { // wakeup from MAIN_BTN
             ESP_LOGI(TAG, "Wake up from MAIN BUTTON. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+            #ifdef DEEP_SLEEP
             started_from_deep_sleep = true;
+            #endif
             #ifdef MEASURE_BATTERY_LEVEL
             xEventGroupSetBits(main_event_group_handle, SHALL_MEASURE_BATTERY);
             #endif
@@ -835,12 +843,14 @@ esp_err_t gm_deep_sleep_init()
             {
                 gm_counter_increment(&gpio_time, false);
             }
+            #ifdef DEEP_SLEEP
             else
             {
                 TickType_t deep_sleep_time = portMAX_DELAY;
                 if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
                     ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
             }
+            #endif
             resolved = true;
         }
         if (!resolved)
@@ -879,7 +889,6 @@ esp_err_t gm_deep_sleep_init()
 
     return ESP_OK;
 }
-#endif
 
 // PULSE_PIN - GPIO Interruption handler
 void IRAM_ATTR gpio_pulse_isr_handler(void *arg)
@@ -979,6 +988,13 @@ esp_err_t gm_gpio_interrup_init()
     ESP_RETURN_ON_ERROR(gpio_isr_handler_add(PULSE_PIN, gpio_pulse_isr_handler, NULL), TAG, "Can't add PULSE_PIN interrupt handler");
     ESP_RETURN_ON_ERROR(gpio_isr_handler_add(MAIN_BTN, gpio_btn_isr_handler, NULL), TAG, "Can't add MAIN_BTN interrupt handler");
 
+    #ifdef LIGHT_SLEEP
+    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(pulse_pin,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for PULSE_PIN LOW");
+    ESP_RETURN_ON_ERROR(gpio_wakeup_enable(pulse_pin,GPIO_INTR_HIGH_LEVEL), TAG, "Can't enable gpio wakeup for PULSE_PIN HIGH");
+    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(mainbtn_pin,GPIO_INTR_HIGH_LEVEL), TAG, "Can't enable gpio wakeup for MAIN_BTN HIGH");
+    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(mainbtn_pin,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for MAIN_BTN LOW");
+    #endif
+
     return ESP_OK;
 }
 
@@ -1012,8 +1028,14 @@ esp_err_t esp_zb_power_save_init(void)
         .light_sleep_enable = true
     };
     #endif
-    rc = esp_pm_configure(&pm_config);
+    #else
+        esp_pm_config_t pm_config = {
+        .max_freq_mhz = cur_cpu_freq_mhz,
+        .min_freq_mhz = cur_cpu_freq_mhz,
+        .light_sleep_enable = false
+    };
     #endif
+    rc = esp_pm_configure(&pm_config);
 #endif
     return rc;
 }
@@ -1121,9 +1143,7 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_zb_power_save_init());
     ESP_ERROR_CHECK(gm_counter_load_nvs());
-    #ifdef DEEP_SLEEP
     ESP_ERROR_CHECK(gm_deep_sleep_init());
-    #endif
     ESP_ERROR_CHECK(config_led());
     led_on();
 

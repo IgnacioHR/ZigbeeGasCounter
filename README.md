@@ -197,6 +197,7 @@ Here are the planned improvements:
 
 1. Design a custom PCB for the ESP32-C6, connectors and resistors.
 2. Create a 3D-printed enclosure for secure installation.
+3. Light-Sleep mode, the chip is not entering Light-Sleep
 
 ## Acknowledgments
 
