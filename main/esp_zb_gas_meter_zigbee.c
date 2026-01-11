@@ -864,7 +864,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     uint32_t *p_sg_p = signal_struct->p_app_signal;
     esp_err_t err_status = signal_struct->esp_err_status;
     esp_zb_app_signal_type_t sig_type = *p_sg_p;
-    ESP_LOGI(TAG, "Shall handle signal 0x%x - %s", sig_type, esp_zb_zdo_signal_to_string(sig_type));
+    ESP_LOGV(TAG, "Shall handle signal 0x%x - %s", sig_type, esp_zb_zdo_signal_to_string(sig_type));
     switch (sig_type) {
     case ESP_ZB_ZDO_SIGNAL_DEFAULT_START:
         ESP_LOGI(TAG, "ZDO DEFAULT START - status: %s", esp_err_to_name(err_status));
@@ -949,8 +949,6 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         ESP_LOGW(TAG, "Device unavailable signal received");
         esp_zb_zdo_device_unavailable_params_t *unavail_params = (esp_zb_zdo_device_unavailable_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGW(TAG, "Device with short address 0x%04x is unavailable", unavail_params->short_addr);
-
-        // esp_restart();
         break;
     default:
         ESP_LOGD(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type, esp_err_to_name(err_status));

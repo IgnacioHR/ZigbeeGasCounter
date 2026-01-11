@@ -963,18 +963,27 @@ void IRAM_ATTR gpio_btn_isr_handler(void *arg)
 // how the sensor should stay most of the time
 esp_err_t gm_gpio_interrup_init()
 {
-    uint64_t pulse_pin = 1ULL << PULSE_PIN;
-    //      __
+    uint64_t pulse_pin = BIT(PULSE_PIN);
+    uint64_t mainbtn_pin = BIT(MAIN_BTN);
+
+    #ifdef LIGHT_SLEEP
+    ESP_RETURN_ON_ERROR(esp_sleep_enable_ext1_wakeup(mainbtn_pin | pulse_pin, ESP_EXT1_WAKEUP_ANY_LOW), TAG, "Can't enable ext1 wakeup for MAIN_BTN and PULSE_PIN");
+    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(pulse_pin,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for PULSE_PIN LOW");
+    ESP_RETURN_ON_ERROR(gpio_wakeup_enable(PULSE_PIN,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for PULSE_PIN HIGH");
+    ESP_RETURN_ON_ERROR(gpio_wakeup_enable(MAIN_BTN,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for MAIN_BTN HIGH");
+    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(mainbtn_pin,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for MAIN_BTN LOW");
+
+    #endif
+
+                                                                   //      __
     gpio_config_t io_conf_pulse = {                                // ____|  |_____
-                                   .intr_type = GPIO_INTR_ANYEDGE, //     ^--^- Interrupt both edges
+                                   .intr_type = GPIO_INTR_NEGEDGE, //        ^- Interrupt falling edge
                                    .mode = GPIO_MODE_INPUT,        // Input pin
                                    .pin_bit_mask = pulse_pin,
                                    .pull_down_en = GPIO_PULLDOWN_DISABLE,
                                    .pull_up_en = GPIO_PULLUP_DISABLE};
     ESP_RETURN_ON_ERROR(gpio_config(&io_conf_pulse), TAG, "Can't config gpio for PULSE_PIN and MAIN_PIN pins");
-
-    uint64_t mainbtn_pin = 1ULL << MAIN_BTN;
-    //      __
+                                                                     //      __
     gpio_config_t io_conf_mainbtn = {                                // ____|  |_____
                                      .intr_type = GPIO_INTR_ANYEDGE, //     ^--^- Interrupt both edges
                                      .mode = GPIO_MODE_INPUT,        // Input pin
@@ -988,12 +997,6 @@ esp_err_t gm_gpio_interrup_init()
     ESP_RETURN_ON_ERROR(gpio_isr_handler_add(PULSE_PIN, gpio_pulse_isr_handler, NULL), TAG, "Can't add PULSE_PIN interrupt handler");
     ESP_RETURN_ON_ERROR(gpio_isr_handler_add(MAIN_BTN, gpio_btn_isr_handler, NULL), TAG, "Can't add MAIN_BTN interrupt handler");
 
-    #ifdef LIGHT_SLEEP
-    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(pulse_pin,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for PULSE_PIN LOW");
-    ESP_RETURN_ON_ERROR(gpio_wakeup_enable(pulse_pin,GPIO_INTR_HIGH_LEVEL), TAG, "Can't enable gpio wakeup for PULSE_PIN HIGH");
-    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(mainbtn_pin,GPIO_INTR_HIGH_LEVEL), TAG, "Can't enable gpio wakeup for MAIN_BTN HIGH");
-    //ESP_RETURN_ON_ERROR(gpio_wakeup_enable(mainbtn_pin,GPIO_INTR_LOW_LEVEL), TAG, "Can't enable gpio wakeup for MAIN_BTN LOW");
-    #endif
 
     return ESP_OK;
 }
@@ -1143,6 +1146,7 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_zb_power_save_init());
     ESP_ERROR_CHECK(gm_counter_load_nvs());
+    xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
     ESP_ERROR_CHECK(gm_deep_sleep_init());
     ESP_ERROR_CHECK(config_led());
     led_on();
