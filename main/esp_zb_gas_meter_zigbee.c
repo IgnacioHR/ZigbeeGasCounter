@@ -25,11 +25,6 @@
 #define ESP_ZB_PRIMARY_CHANNEL_MASK     ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK  /* Zigbee primary channel mask use in the example */
 #define MY_METERING_ENDPOINT            1
 
-#define ESP_MANUFACTURER_NAME           "\x06""MICASA"
-#define ESP_MODEL_IDENTIFIER            "\x0f""MiCASAGasCounter" /* Customized model identifier */
-#define ESP_DATE_CODE                   "\x08""20250301"
-#define ESP_PRODUCT_URL                 "\x2D""https://github.com/IgnacioHR/ZigbeeGasCounter"
-
 esp_zb_uint48_t current_summation_delivered = {
 	.low = 0,
 	.high = 0
@@ -476,6 +471,7 @@ void esp_zb_task(void *pvParameters)
     if (!esp_zb_get_rx_on_when_idle()) {
         esp_zb_set_rx_on_when_idle(true);
     }
+    ESP_ERROR_CHECK(esp_zb_sleep_set_threshold(200));
     ESP_ERROR_CHECK(esp_sleep_enable_gpio_wakeup());
     #endif
 
@@ -759,10 +755,6 @@ void esp_zb_task(void *pvParameters)
     esp_zb_set_tx_power(IEEE802154_TXPOWER_VALUE_MAX);
     ESP_ERROR_CHECK(esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
     ESP_ERROR_CHECK(esp_zb_set_secondary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK));
-    #ifdef LIGHT_SLEEP
-    ret = esp_zb_sleep_set_threshold(1000);
-    ESP_RETURN_ON_FALSE(ret == ESP_OK, , TAG, "Failed to set threshold for light sleep");
-    #endif
 
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_stack_main_loop();
@@ -937,12 +929,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         #ifdef LIGHT_SLEEP
         ESP_LOGI(TAG, "Going to sleep");
-        esp_zb_sleep_now();
-        ESP_LOGI(TAG, "Wake up from sleep");
-        //esp_err_t err = gm_deep_sleep_init();
-        //if (err != ESP_OK) {
-        //    ESP_LOGE(TAG, "Failed to re-initialize deep sleep: %s", esp_err_to_name(err));
-        //}
+        if (esp_zb_bdb_dev_joined()) {
+            esp_zb_sleep_now();
+            ESP_LOGI(TAG, "Wake up from sleep");
+            //esp_err_t err = gm_deep_sleep_init();
+            //if (err != ESP_OK) {
+            //    ESP_LOGE(TAG, "Failed to re-initialize deep sleep: %s", esp_err_to_name(err));
+            //}
+        } else {
+            ESP_LOGI(TAG, "Not joined, can't sleep");
+        }
         #endif
         break;
     case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:

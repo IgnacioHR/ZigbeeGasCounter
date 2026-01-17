@@ -13,6 +13,11 @@
 #ifndef ESP_ZB_GAS_METER_H
 #define ESP_ZB_GAS_METER_H
 
+#define ESP_MANUFACTURER_NAME           "\x14""Custom devices (DiY)"
+#define ESP_MODEL_IDENTIFIER            "\x10""MiCASAGasCounter" /* Customized model identifier */
+#define ESP_DATE_CODE                   "\x08""20250301"
+#define ESP_PRODUCT_URL                 "\x2D""https://github.com/IgnacioHR/ZigbeeGasCounter"
+
 // ******************************************************************************
 // Functionality that will be included in the gas meter main application
 //#define MEASURE_FLOW_RATE
@@ -20,7 +25,7 @@
 
 // Only one can be defines at a time
 //#define DEEP_SLEEP
-#define LIGHT_SLEEP
+//#define LIGHT_SLEEP
 // ******************************************************************************
 
 // ******************************************************************************
