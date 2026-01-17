@@ -1110,7 +1110,7 @@ void app_main(void)
     esp_log_level_set("*", ESP_LOG_ERROR);
     esp_log_level_set(TAG, ESP_LOG_INFO);
     ESP_LOGD(TAG, "\n");
-    ESP_LOGI(TAG, "Starting Zigbee GasMeter...");
+    ESP_LOGI(TAG, "Starting Zigbee GasCounter...");
     esp_err_t reset_error = report_reset_reason();
 
     #ifdef DEEP_SLEEP

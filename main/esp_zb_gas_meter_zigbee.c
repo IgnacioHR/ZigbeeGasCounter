@@ -26,9 +26,9 @@
 #define MY_METERING_ENDPOINT            1
 
 #define ESP_MANUFACTURER_NAME           "\x06""MICASA"
-#define ESP_MODEL_IDENTIFIER            "\x08""GasMeter" /* Customized model identifier */
+#define ESP_MODEL_IDENTIFIER            "\x0f""MiCASAGasCounter" /* Customized model identifier */
 #define ESP_DATE_CODE                   "\x08""20250301"
-#define ESP_PRODUCT_URL                 "\x2B""https://github.com/IgnacioHR/ZigbeeGasMeter"
+#define ESP_PRODUCT_URL                 "\x2D""https://github.com/IgnacioHR/ZigbeeGasCounter"
 
 esp_zb_uint48_t current_summation_delivered = {
 	.low = 0,

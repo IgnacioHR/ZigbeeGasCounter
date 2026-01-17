@@ -113,8 +113,8 @@ To build this project, you’ll need:
 First, download the project code from the GitHub repository:
 
 ```bash
-git clone https://github.com/IgnacioHR/ZigbeeGasMeter.git
-cd ZigbeeGasMeter
+git clone https://github.com/IgnacioHR/ZigbeeGasCounter.git
+cd ZigbeeGasCounter
 ```
 
 ### **2. Configure the target chip**
