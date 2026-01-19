@@ -82,5 +82,6 @@ TickType_t dm_deep_sleep_time_ms();
 #endif
 
 void gm_counter_set(const esp_zb_uint48_t *new_value);
+uint32_t time_diff_ms(const struct timeval *other);
 
 #endif // ESP_ZB_GAS_METER_H

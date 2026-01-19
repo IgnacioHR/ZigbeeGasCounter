@@ -40,7 +40,7 @@
 #define MAIN_BTN GPIO_NUM_0
 
 // amount of time to ignore a digital input pin interrupt repetition
-#define REED_DEBOUNCE_TIMEOUT 1000 /* milliseconds */
+#define REED_DEBOUNCE_TIMEOUT 1000U /* milliseconds */
 #define BTN_DEBOUNCE_TIMEOUT 30 /* milliseconds */
 
 /* Human interaction and device configuration */
@@ -73,8 +73,10 @@ bool started_from_deep_sleep = false;
 // true while leaving the network to prevent sending data to coordinator
 bool leaving_network = false;
 
+#ifdef DEEP_SLEEP
 // sleep
 RTC_DATA_ATTR struct timeval sleep_enter_time;
+#endif
 
 // Non volatile memory handle
 nvs_handle_t my_nvs_handle;
@@ -211,11 +213,11 @@ void gm_counter_reset()
 
 // Helper function to return the time in milliseconds since now and the other timeval
 // received as a parameter
-int time_diff_ms(const struct timeval *other)
+uint32_t time_diff_ms(const struct timeval *other)
 {
     struct timeval now;
     gettimeofday(&now, NULL);
-    int time_diff = (now.tv_sec - other->tv_sec) * 1000 + (now.tv_usec - other->tv_usec) / 1000;
+    uint32_t time_diff = (now.tv_sec - other->tv_sec) * 1000U + (now.tv_usec - other->tv_usec) / 1000U;
     return time_diff;
 }
 
@@ -229,7 +231,7 @@ void check_shall_enable_radio()
     {
         bool enable_radio =
             (last_report_sent_time.tv_sec == 0 && last_report_sent_time.tv_usec == 0) ||
-            (time_diff_ms(&last_report_sent_time) / 1000 >= MUST_SYNC_MINIMUM_TIME);
+            (time_diff_ms(&last_report_sent_time) / 1000U >= MUST_SYNC_MINIMUM_TIME);
         if (!enable_radio && last_summation_sent > 0)
         {
             uint64_t current_summation_64 = current_summation_delivered.high;
@@ -251,7 +253,7 @@ void check_shall_measure_battery()
 {
     bool measure_battery =
         (last_battery_measurement_time.tv_sec == 0 && last_battery_measurement_time.tv_usec == 0) ||
-        (time_diff_ms(&last_battery_measurement_time) / 1000 >= MUST_SYNC_MINIMUM_TIME);
+        (time_diff_ms(&last_battery_measurement_time) / 1000U >= MUST_SYNC_MINIMUM_TIME);
     if (measure_battery)
     {
         // battery voltage is measured with zigbee radio
@@ -794,14 +796,20 @@ esp_err_t gm_deep_sleep_init()
     // wake-up reason:
     struct timeval gpio_time;
     gettimeofday(&gpio_time, NULL);
+    #ifdef DEEP_SLEEP
     int sleep_time_ms = (gpio_time.tv_sec - sleep_enter_time.tv_sec) * 1000 +
                         (gpio_time.tv_usec - sleep_enter_time.tv_usec) / 1000;
+    #endif
     esp_sleep_wakeup_cause_t wake_up_cause = esp_sleep_get_wakeup_cause();
     switch (wake_up_cause)
     {
         case ESP_SLEEP_WAKEUP_TIMER:
         {
+            #ifdef DEEP_SLEEP
             ESP_LOGI(TAG, "Wake up from timer. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+            #else
+            ESP_LOGI(TAG, "Wake up from timer");
+            #endif
             xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
             xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
             break;
@@ -812,9 +820,11 @@ esp_err_t gm_deep_sleep_init()
             uint64_t ext1mask = esp_sleep_get_ext1_wakeup_status();
             if ((ext1mask & gpio_mainbtn_pin_mask) == gpio_mainbtn_pin_mask)
             { // wakeup from MAIN_BTN
-                ESP_LOGI(TAG, "Wake up from MAIN BUTTON. Time spent in deep sleep and boot: %dms", sleep_time_ms);
                 #ifdef DEEP_SLEEP
+                ESP_LOGI(TAG, "Wake up from MAIN BUTTON. Time spent in deep sleep and boot: %dms", sleep_time_ms);
                 started_from_deep_sleep = true;
+                #else
+                ESP_LOGI(TAG, "Wake up from MAIN BUTTON");
                 #endif
                 #ifdef MEASURE_BATTERY_LEVEL
                 xEventGroupSetBits(main_event_group_handle, SHALL_MEASURE_BATTERY);
@@ -833,8 +843,13 @@ esp_err_t gm_deep_sleep_init()
                 resolved = true;
             }
             if ((ext1mask & gpio_pulse_pin_mask) == gpio_pulse_pin_mask)
-            { // wakeup from PULSE_PIN
+            { 
+                // wakeup from PULSE_PIN
+                #ifdef DEEP_SLEEP
                 ESP_LOGI(TAG, "Wake up from GAS PULSE. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+                #else
+                ESP_LOGI(TAG, "Wake up from GAS PULSE");
+                #endif
                 // check_gpio_time = true;
                 int level = gpio_get_level(PULSE_PIN);
                 // if PULSE_PIN is low AND check_gpio_time is true we
@@ -855,7 +870,11 @@ esp_err_t gm_deep_sleep_init()
             }
             if (!resolved)
             {
+                #ifdef DEEP_SLEEP
                 ESP_LOGI(TAG, "Wake up from unknown GPIO. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+                #else
+                ESP_LOGI(TAG, "Wake up from unknown GPIO");
+                #endif
             }
             break;
         }

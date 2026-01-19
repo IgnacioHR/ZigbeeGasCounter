@@ -28,7 +28,12 @@
 
 #define INITIAL_TIME_KEEPING_RADIO_ON   2 * 60 /* 2 minutes in seconds */
 
-struct timeval time_commisioning_started = {0};
+#ifdef LIGHT_SLEEP
+struct timeval time_commisioning_started = {
+    .tv_sec = 0,
+    .tv_usec = 0
+};
+#endif
 
 esp_zb_uint48_t current_summation_delivered = {
 	.low = 0,
@@ -44,7 +49,10 @@ esp_zb_int24_t instantaneous_demand = {
 };
 #endif
 
-struct timeval last_report_sent_time = {0};
+struct timeval last_report_sent_time = {
+    .tv_sec = 0,
+    .tv_usec = 0
+};
 uint64_t last_summation_sent = 0;
 
 // value for the ESP_ZB_ZCL_ATTR_IDENTIFY_IDENTIFY_TIME_ID attribute
@@ -907,9 +915,11 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         }
         break;
     case ESP_ZB_BDB_SIGNAL_STEERING:
+        #ifdef LIGHT_SLEEP
         if (time_commisioning_started.tv_sec == 0 && time_commisioning_started.tv_usec == 0) {
             gettimeofday(&time_commisioning_started, NULL);
         }
+        #endif
         if (err_status == ESP_OK) {
             ESP_LOGI(TAG, "Signal steering successful");
             esp_zb_ieee_addr_t extended_pan_id;
@@ -940,11 +950,8 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         #ifdef LIGHT_SLEEP
-        struct timeval now = {0};
-        gettimeofday(&now, NULL);
-        int start_time_s = (now.tv_sec - time_commisioning_started.tv_sec) +
-                    (now.tv_usec - time_commisioning_started.tv_usec) / 1000000;
-        if (start_time_s > INITIAL_TIME_KEEPING_RADIO_ON && esp_zb_bdb_dev_joined()) {
+        uint32_t seconds_since_commisioning_started = time_diff_ms(&time_commisioning_started) / 1000U;
+        if (seconds_since_commisioning_started > INITIAL_TIME_KEEPING_RADIO_ON && esp_zb_bdb_dev_joined()) {
             ESP_LOGI(TAG, "Going to sleep");
             esp_zb_sleep_now();
             ESP_LOGI(TAG, "Wake up from sleep: Reason %d", esp_sleep_get_wakeup_cause());
