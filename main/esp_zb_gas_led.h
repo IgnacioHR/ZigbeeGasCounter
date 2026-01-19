@@ -20,3 +20,5 @@ esp_err_t config_led();
 void led_on();
 
 void led_off();
+
+bool led_is_on();

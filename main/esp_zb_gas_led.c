@@ -64,6 +64,16 @@ void led_off()
 }
 
 /**
+ * @brief true if the led is on
+ * 
+ * @return true 
+ * @return false 
+ */
+bool led_is_on() {
+	return led_state == ON;
+}
+
+/**
  * @brief Configure the led pin
  * 
  */

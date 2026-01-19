@@ -799,93 +799,104 @@ esp_err_t gm_deep_sleep_init()
     esp_sleep_wakeup_cause_t wake_up_cause = esp_sleep_get_wakeup_cause();
     switch (wake_up_cause)
     {
-    case ESP_SLEEP_WAKEUP_TIMER:
-    {
-        ESP_LOGI(TAG, "Wake up from timer. Time spent in deep sleep and boot: %dms", sleep_time_ms);
-        xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
-        xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
-        break;
-    }
-    case ESP_SLEEP_WAKEUP_EXT1:
-    {
-        bool resolved = false;
-        uint64_t ext1mask = esp_sleep_get_ext1_wakeup_status();
-        if ((ext1mask & gpio_mainbtn_pin_mask) == gpio_mainbtn_pin_mask)
-        { // wakeup from MAIN_BTN
-            ESP_LOGI(TAG, "Wake up from MAIN BUTTON. Time spent in deep sleep and boot: %dms", sleep_time_ms);
-            #ifdef DEEP_SLEEP
-            started_from_deep_sleep = true;
-            #endif
-            #ifdef MEASURE_BATTERY_LEVEL
-            xEventGroupSetBits(main_event_group_handle, SHALL_MEASURE_BATTERY);
-            #endif
+        case ESP_SLEEP_WAKEUP_TIMER:
+        {
+            ESP_LOGI(TAG, "Wake up from timer. Time spent in deep sleep and boot: %dms", sleep_time_ms);
             xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
             xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
-            int level = gpio_get_level(MAIN_BTN);
-            if (level == 0)
-            {
-                xTaskNotifyGive(btn_release_task_handle);
-            }
-            else
-            {
-                xTaskNotifyGive(btn_press_task_handle);
-            }
-            resolved = true;
+            break;
         }
-        if ((ext1mask & gpio_pulse_pin_mask) == gpio_pulse_pin_mask)
-        { // wakeup from PULSE_PIN
-            ESP_LOGI(TAG, "Wake up from GAS PULSE. Time spent in deep sleep and boot: %dms", sleep_time_ms);
-            // check_gpio_time = true;
-            int level = gpio_get_level(PULSE_PIN);
-            // if PULSE_PIN is low AND check_gpio_time is true we
-            // miss the interrupt so count it now
-            if (level == 0)
-            {
-                gm_counter_increment(&gpio_time, false);
-            }
-            #ifdef DEEP_SLEEP
-            else
-            {
-                TickType_t deep_sleep_time = portMAX_DELAY;
-                if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
-                    ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
-            }
-            #endif
-            resolved = true;
-        }
-        if (!resolved)
+        case ESP_SLEEP_WAKEUP_EXT1:
         {
-            ESP_LOGI(TAG, "Wake up from unknown GPIO. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+            bool resolved = false;
+            uint64_t ext1mask = esp_sleep_get_ext1_wakeup_status();
+            if ((ext1mask & gpio_mainbtn_pin_mask) == gpio_mainbtn_pin_mask)
+            { // wakeup from MAIN_BTN
+                ESP_LOGI(TAG, "Wake up from MAIN BUTTON. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+                #ifdef DEEP_SLEEP
+                started_from_deep_sleep = true;
+                #endif
+                #ifdef MEASURE_BATTERY_LEVEL
+                xEventGroupSetBits(main_event_group_handle, SHALL_MEASURE_BATTERY);
+                #endif
+                xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
+                xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
+                int level = gpio_get_level(MAIN_BTN);
+                if (level == 0)
+                {
+                    xTaskNotifyGive(btn_release_task_handle);
+                }
+                else
+                {
+                    xTaskNotifyGive(btn_press_task_handle);
+                }
+                resolved = true;
+            }
+            if ((ext1mask & gpio_pulse_pin_mask) == gpio_pulse_pin_mask)
+            { // wakeup from PULSE_PIN
+                ESP_LOGI(TAG, "Wake up from GAS PULSE. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+                // check_gpio_time = true;
+                int level = gpio_get_level(PULSE_PIN);
+                // if PULSE_PIN is low AND check_gpio_time is true we
+                // miss the interrupt so count it now
+                if (level == 0)
+                {
+                    gm_counter_increment(&gpio_time, false);
+                }
+                #ifdef DEEP_SLEEP
+                else
+                {
+                    TickType_t deep_sleep_time = portMAX_DELAY;
+                    if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
+                        ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
+                }
+                #endif
+                resolved = true;
+            }
+            if (!resolved)
+            {
+                ESP_LOGI(TAG, "Wake up from unknown GPIO. Time spent in deep sleep and boot: %dms", sleep_time_ms);
+            }
+            break;
         }
-        break;
+        case ESP_SLEEP_WAKEUP_UNDEFINED:
+        default:
+            ESP_LOGI(TAG, "Not a deep sleep reset");
+            xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
+            xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
+            break;
     }
-    case ESP_SLEEP_WAKEUP_UNDEFINED:
-    default:
-        ESP_LOGI(TAG, "Not a deep sleep reset");
-        xEventGroupSetBits(main_event_group_handle, SHALL_ENABLE_ZIGBEE);
-        xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
-        break;
-    }
+    ESP_LOGI(TAG, "Check if zigbee radio shall be enabled");
     check_shall_enable_radio();
     #ifdef MEASURE_BATTERY_LEVEL
+    ESP_LOGI(TAG, "Check if battery shall be measured");
     check_shall_measure_battery();
     #endif
 
-    /* Set the methods of how to wake up: */
-    /* 1. RTC timer waking-up */
-    int report_time_s = (gpio_time.tv_sec - last_report_sent_time.tv_sec) +
-                        (gpio_time.tv_usec - last_report_sent_time.tv_usec) / 1000000;
+    #if defined(DEEP_SLEEP) || defined(LIGHT_SLEEP)
+        if (last_report_sent_time.tv_sec == 0 && last_report_sent_time.tv_usec == 0) {
+            ESP_LOGI(TAG, "Last report sent time initialized");
+            gettimeofday(&last_report_sent_time, NULL);
+        }
+        /* Set the methods of how to wake up: */
+        /* 1. RTC timer waking-up */
+        ESP_LOGI(TAG, "Configuring wake up methods");
+        int report_time_s = (gpio_time.tv_sec - last_report_sent_time.tv_sec) +
+                            (gpio_time.tv_usec - last_report_sent_time.tv_usec) / 1000000;
 
-    const uint64_t wakeup_time_sec = MUST_SYNC_MINIMUM_TIME - report_time_s;
-    ESP_LOGD(TAG, "Enabling timer wakeup, %llds", wakeup_time_sec);
-    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000));
+        const uint64_t wakeup_time_sec = MUST_SYNC_MINIMUM_TIME - report_time_s;
+        ESP_LOGI(TAG, "Enabling timer wakeup, %llds", wakeup_time_sec);
+        ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000));
 
-    /* PULSE_PIN and MAIN_BTN wake up on pull up */
+        /* PULSE_PIN and MAIN_BTN wake up on pull up */
 
-    ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup_io(
-        gpio_pulse_pin_mask | gpio_mainbtn_pin_mask, ESP_EXT1_WAKEUP_ANY_HIGH));
-    
-    esp_deep_sleep_disable_rom_logging();
+        ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup_io(
+            gpio_pulse_pin_mask | gpio_mainbtn_pin_mask, ESP_EXT1_WAKEUP_ANY_HIGH));
+        
+        #ifdef DEEP_SLEEP
+            esp_deep_sleep_disable_rom_logging();
+        #endif
+    #endif
 
     return ESP_OK;
 }
@@ -907,14 +918,13 @@ void IRAM_ATTR gpio_pulse_isr_handler(void *arg)
     int level = gpio_get_level(PULSE_PIN);
     if (level == 0)
     {
-        // failing
         gm_counter_increment(&now, true);
     }
     #ifdef DEEP_SLEEP
     else if (deep_sleep_task_handle != NULL)
     {
         // rising, the device while NOT in deep sleep mode. At this moment, if there
-        // is no activity in 30 seconds, the device will try to enter deep sleep but
+        // is no activity in 30 seconds, the device will try to enter deep sleep btu
         // it won't success because the pin level is already high so it will wake up
         // inmediatelly. The solution at this moment is to stop the timer interrupt
         // until the failing edge is detected
@@ -1142,15 +1152,23 @@ void app_main(void)
         xEventGroupSetBits(report_event_group_handle, EXTENDED_STATUS_REPORT);
     }
 
+    ESP_LOGI(TAG, "Configuring GPIO Interrupt...");
     ESP_ERROR_CHECK(gm_gpio_interrup_init());
+    ESP_LOGI(TAG, "Configuring NVS Flash");
     ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_LOGI(TAG, "Configuring power save");
     ESP_ERROR_CHECK(esp_zb_power_save_init());
+    ESP_LOGI(TAG, "Load counter from NVS");
     ESP_ERROR_CHECK(gm_counter_load_nvs());
     xEventGroupSetBits(report_event_group_handle, CURRENT_SUMMATION_DELIVERED_REPORT);
+    ESP_LOGI(TAG, "Setup deep sleep");
     ESP_ERROR_CHECK(gm_deep_sleep_init());
+    ESP_LOGI(TAG, "Configuring led");
     ESP_ERROR_CHECK(config_led());
+    ESP_LOGI(TAG, "Led ON");
     led_on();
 
     // start main loop
+    ESP_LOGI(TAG, "Starting main loop");
     ESP_ERROR_CHECK(xTaskCreate(gm_main_loop_task, "gas_meter_main", 8192, NULL, tskIDLE_PRIORITY, NULL) != pdPASS);
 }

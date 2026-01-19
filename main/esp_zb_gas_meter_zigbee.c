@@ -18,12 +18,17 @@
 #include "esp_zb_gas_meter_zigbee.h"
 #include "esp_zb_gas_meter_adc_zigbee.h"
 #include "esp_zb_gas_ota.h"
+#include "esp_zb_gas_led.h"
 
 /* Zigbee configuration */
 #define ED_AGING_TIMEOUT                ESP_ZB_ED_AGING_TIMEOUT_64MIN
 #define ED_KEEP_ALIVE                   3000    /* 3000 millisecond */
 #define ESP_ZB_PRIMARY_CHANNEL_MASK     ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK  /* Zigbee primary channel mask use in the example */
 #define MY_METERING_ENDPOINT            1
+
+#define INITIAL_TIME_KEEPING_RADIO_ON   2 * 60 /* 2 minutes in seconds */
+
+struct timeval time_commisioning_started = {0};
 
 esp_zb_uint48_t current_summation_delivered = {
 	.low = 0,
@@ -775,8 +780,7 @@ void gm_main_loop_zigbee_task(void *arg)
         // Not all bits will be set, but it is more efficient to wait for the maximum
         // number of bits to be set before continuing, this is the reason we wait for
         // all bits to be set.
-        EventBits_t uxBits = xEventGroupWaitBits(
-            report_event_group_handle
+        EventBits_t uxBits = xEventGroupWaitBits(report_event_group_handle
             ,CURRENT_SUMMATION_DELIVERED_REPORT 
             #ifdef MEASURE_INSTANTANEOUS_DEMAND
             | INSTANTANEOUS_DEMAND_REPORT
@@ -814,6 +818,11 @@ void gm_main_loop_zigbee_task(void *arg)
                     ,((uxBits & STATUS_REPORT) != 0) ? "Yes": "No"
                     ,((uxBits & EXTENDED_STATUS_REPORT) != 0) ? "Yes": "No"
                 );
+                if (led_is_on()) {
+                    led_off();
+                } else {
+                    led_on();
+                }
                 if (esp_zb_lock_acquire(portMAX_DELAY)) {
                     status = zb_radio_setup_report_values(uxBits);
                     if (status == ESP_ZB_ZCL_STATUS_SUCCESS) {
@@ -898,6 +907,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         }
         break;
     case ESP_ZB_BDB_SIGNAL_STEERING:
+        if (time_commisioning_started.tv_sec == 0 && time_commisioning_started.tv_usec == 0) {
+            gettimeofday(&time_commisioning_started, NULL);
+        }
         if (err_status == ESP_OK) {
             ESP_LOGI(TAG, "Signal steering successful");
             esp_zb_ieee_addr_t extended_pan_id;
@@ -928,16 +940,14 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         #ifdef LIGHT_SLEEP
-        ESP_LOGI(TAG, "Going to sleep");
-        if (esp_zb_bdb_dev_joined()) {
+        struct timeval now = {0};
+        gettimeofday(&now, NULL);
+        int start_time_s = (now.tv_sec - time_commisioning_started.tv_sec) +
+                    (now.tv_usec - time_commisioning_started.tv_usec) / 1000000;
+        if (start_time_s > INITIAL_TIME_KEEPING_RADIO_ON && esp_zb_bdb_dev_joined()) {
+            ESP_LOGI(TAG, "Going to sleep");
             esp_zb_sleep_now();
-            ESP_LOGI(TAG, "Wake up from sleep");
-            //esp_err_t err = gm_deep_sleep_init();
-            //if (err != ESP_OK) {
-            //    ESP_LOGE(TAG, "Failed to re-initialize deep sleep: %s", esp_err_to_name(err));
-            //}
-        } else {
-            ESP_LOGI(TAG, "Not joined, can't sleep");
+            ESP_LOGI(TAG, "Wake up from sleep: Reason %d", esp_sleep_get_wakeup_cause());
         }
         #endif
         break;
