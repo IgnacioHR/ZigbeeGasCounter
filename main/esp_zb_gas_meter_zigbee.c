@@ -460,6 +460,7 @@ esp_err_t update_reporting(esp_zb_zcl_attr_location_info_t *attr_location, uint3
 void esp_zb_task(void *pvParameters) 
 {
     ESP_LOGI(TAG, "Initialize zigbee task started");
+    gettimeofday(&time_commisioning_started, NULL);
 
     esp_zb_platform_config_t config = {
         .radio_config = {
@@ -890,6 +891,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
         if (err_status == ESP_OK) {
+            gettimeofday(&time_commisioning_started, NULL);
             ESP_LOGD(TAG, "Device started up in%s factory-reset mode", esp_zb_bdb_is_factory_new() ? "" : " non");
             if (esp_zb_bdb_is_factory_new()) {
                 ESP_LOGI(TAG, "Start network steering from factory new");
@@ -916,9 +918,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     case ESP_ZB_BDB_SIGNAL_STEERING:
         #ifdef LIGHT_SLEEP
-        if (time_commisioning_started.tv_sec == 0 && time_commisioning_started.tv_usec == 0) {
-            gettimeofday(&time_commisioning_started, NULL);
-        }
+        gettimeofday(&time_commisioning_started, NULL);
         #endif
         if (err_status == ESP_OK) {
             ESP_LOGI(TAG, "Signal steering successful");
@@ -950,12 +950,20 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         #ifdef LIGHT_SLEEP
-        uint32_t seconds_since_commisioning_started = time_diff_ms(&time_commisioning_started) / 1000U;
-        if (seconds_since_commisioning_started > INITIAL_TIME_KEEPING_RADIO_ON && esp_zb_bdb_dev_joined()) {
-            ESP_LOGI(TAG, "Going to sleep");
-            esp_zb_sleep_now();
-            ESP_LOGI(TAG, "Wake up from sleep: Reason %d", esp_sleep_get_wakeup_cause());
+        if (!esp_zb_bdb_dev_joined()) {
+            break;
         }
+        esp_zb_zdo_signal_can_sleep_params_t *can_sleep_params = (esp_zb_zdo_signal_can_sleep_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        uint32_t ms = can_sleep_params->sleep_duration;
+        if (ms < 50) break;
+        int32_t seconds_since_commisioning_started = time_diff_ms(&time_commisioning_started) / 1000U;
+        if (seconds_since_commisioning_started <= INITIAL_TIME_KEEPING_RADIO_ON) break;
+        if (ms > ED_KEEP_ALIVE) ms = ED_KEEP_ALIVE;
+        ESP_LOGI(TAG, "Going to sleep for %d ms", ms);
+        esp_sleep_enable_timer_wakeup(ms * 1000);
+        led_off();
+        esp_zb_sleep_now();
+        ESP_LOGI(TAG, "Wake up from sleep: Reason %d", esp_sleep_get_wakeup_cause());
         #endif
         break;
     case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:
