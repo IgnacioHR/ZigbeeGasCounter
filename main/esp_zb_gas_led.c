@@ -14,9 +14,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "esp_zb_gas_meter.h"
 #include "esp_zb_gas_led.h"
-
-const char *TAG = "GAS_LED.C";
 
 TaskHandle_t led_task_handle = NULL;
 

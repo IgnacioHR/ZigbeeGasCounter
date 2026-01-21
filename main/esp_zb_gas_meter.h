@@ -37,6 +37,8 @@
 #include "esp_zigbee_type.h"
 #include "freertos/FreeRTOS.h"
 
+extern const char *TAG;
+
 // Report event group events
 #define CURRENT_SUMMATION_DELIVERED_REPORT  (EventBits_t)(1 << 0)
 #ifdef MEASURE_FLOW_RATE

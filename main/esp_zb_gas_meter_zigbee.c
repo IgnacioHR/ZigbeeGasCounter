@@ -28,8 +28,6 @@
 
 #define INITIAL_TIME_KEEPING_RADIO_ON   2 * 60 /* 2 minutes in seconds */
 
-const char *TAG = "METER_ZIGBEE.C";
-
 #ifdef LIGHT_SLEEP
 struct timeval time_commisioning_started = {
     .tv_sec = 0,

@@ -30,8 +30,6 @@
 // output - pin to enable battery voltage to the adc converter
 #define BAT_MON_ENABLE                      GPIO_NUM_21
 
-const char *TAG = "METER_ADC.C";
-
 uint8_t battery_voltage = 0;
 uint8_t battery_percentage = 0;
 uint32_t battery_alarm_state = 0;
