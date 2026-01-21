@@ -24,8 +24,8 @@
 #define MEASURE_BATTERY_LEVEL
 
 // Only one can be defined
-//#define DEEP_SLEEP
-#define LIGHT_SLEEP
+#define DEEP_SLEEP
+//#define LIGHT_SLEEP
 // ******************************************************************************
 
 // ******************************************************************************
@@ -36,8 +36,6 @@
 
 #include "esp_zigbee_type.h"
 #include "freertos/FreeRTOS.h"
-
-extern const char *TAG;
 
 // Report event group events
 #define CURRENT_SUMMATION_DELIVERED_REPORT  (EventBits_t)(1 << 0)

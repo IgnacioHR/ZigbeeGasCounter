@@ -28,6 +28,8 @@
 
 #define INITIAL_TIME_KEEPING_RADIO_ON   2 * 60 /* 2 minutes in seconds */
 
+const char *TAG = "METER_ZIGBEE.C";
+
 #ifdef LIGHT_SLEEP
 struct timeval time_commisioning_started = {
     .tv_sec = 0,
@@ -460,7 +462,9 @@ esp_err_t update_reporting(esp_zb_zcl_attr_location_info_t *attr_location, uint3
 void esp_zb_task(void *pvParameters) 
 {
     ESP_LOGI(TAG, "Initialize zigbee task started");
+    #ifdef LIGHT_SLEEP
     gettimeofday(&time_commisioning_started, NULL);
+    #endif
 
     esp_zb_platform_config_t config = {
         .radio_config = {
@@ -891,7 +895,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
         if (err_status == ESP_OK) {
+            #ifdef LIGHT_SLEEP
             gettimeofday(&time_commisioning_started, NULL);
+            #endif
             ESP_LOGD(TAG, "Device started up in%s factory-reset mode", esp_zb_bdb_is_factory_new() ? "" : " non");
             if (esp_zb_bdb_is_factory_new()) {
                 ESP_LOGI(TAG, "Start network steering from factory new");

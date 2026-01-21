@@ -13,8 +13,6 @@
 // Seeedstudio yellow pin
 #define LED_PIN GPIO_NUM_15
 
-extern const char *TAG;
-
 esp_err_t config_led();
 
 void led_on();

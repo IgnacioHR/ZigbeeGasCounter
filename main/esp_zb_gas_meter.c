@@ -55,7 +55,7 @@
 #define TIME_TO_RESET_INSTANTANEOUS_D UINT32_C(TIME_TO_SLEEP_ZIGBEE_ON - 2000)
 #endif
 
-const char *TAG = "MICASA_GAS_COUNTER";
+const char *TAG = "GAS_METER.C";
 
 // Last time a pulse was received
 RTC_DATA_ATTR struct timeval last_pulse_time;

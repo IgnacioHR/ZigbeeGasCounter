@@ -16,6 +16,8 @@
 
 #include "esp_zb_gas_led.h"
 
+const char *TAG = "GAS_LED.C";
+
 TaskHandle_t led_task_handle = NULL;
 
 typedef enum LedState_e {

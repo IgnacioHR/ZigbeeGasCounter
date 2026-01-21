@@ -17,6 +17,8 @@
 #include "esp_zb_gas_meter.h"
 #include "esp_zigbee_core.h"
 
+const char *TAG = "GAS_OTA.C";
+
 // OTA
 uint16_t zigbee_zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE;
 uint16_t zigbee_stack_version = 0x0002;
