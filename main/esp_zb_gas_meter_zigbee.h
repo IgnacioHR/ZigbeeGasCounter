@@ -16,16 +16,19 @@
 #include "zcl/esp_zigbee_zcl_metering.h"
 
 // Maximum time to force a device report
-#define MUST_SYNC_MINIMUM_TIME          UINT16_C(65000) // 18 hours in seconds
+#define MUST_SYNC_MINIMUM_TIME          UINT16_C(3600) // 1 hour in seconds
 
 // time to send the device to deep sleep when Zigbee radio is on
-#define TIME_TO_SLEEP_ZIGBEE_ON         UINT32_C(30 * 1000) // milliseconds
+#define TIME_TO_SLEEP_ZIGBEE_ON         UINT32_C(1000) // milliseconds
+
+// time to send the device to deep sleep when Zigbee radio is on
+#define TIME_TO_SLEEP_ZIGBEE_STARTING   UINT32_C(30 * 1000) // milliseconds
 
 // time to send the device to deep sleep when Zigbee radio is off
 #define TIME_TO_SLEEP_ZIGBEE_OFF        UINT32_C(500) // milliseconds
 
 // Maximum difference between the internal counter value and last reported counter value
-#define COUNTER_REPORT_DIFF             UINT32_C(10)
+#define COUNTER_REPORT_DIFF             UINT32_C(100)
 
 // Measure current summation delivered
 extern esp_zb_uint48_t current_summation_delivered;

@@ -40,34 +40,34 @@
 extern const char *TAG;
 
 // Report event group events
-#define CURRENT_SUMMATION_DELIVERED_REPORT  (EventBits_t)(1 << 0)
+#define CURRENT_SUMMATION_DELIVERED_REPORT  (EventBits_t)(1U << 0)
 #ifdef MEASURE_FLOW_RATE
-#define INSTANTANEOUS_DEMAND_REPORT         (EventBits_t)(1 << 1)
+#define INSTANTANEOUS_DEMAND_REPORT         (EventBits_t)(1U << 1)
 #endif
-#define STATUS_REPORT                       (EventBits_t)(1 << 2)
-#define EXTENDED_STATUS_REPORT              (EventBits_t)(1 << 3)
+#define STATUS_REPORT                       (EventBits_t)(1U << 2)
+#define EXTENDED_STATUS_REPORT              (EventBits_t)(1U << 3)
 #ifdef MEASURE_BATTERY_LEVEL
-#define BATTERY_REPORT                      (EventBits_t)(1 << 4)
+#define BATTERY_REPORT                      (EventBits_t)(1U << 4)
 #endif
 
 // Main group events
 #ifdef MEASURE_BATTERY_LEVEL
-#define SHALL_MEASURE_BATTERY           (1 << 0)
+#define SHALL_MEASURE_BATTERY           (1U << 0)
 #endif
-#define SHALL_ENABLE_ZIGBEE             (1 << 1)
+#define SHALL_ENABLE_ZIGBEE             (1U << 1)
 // this is not implemented because of lack of support from esp-zigbee-sdk
 // see https://github.com/espressif/esp-zigbee-sdk/issues/561
-#define SHALL_DISABLE_ZIGBEE            (1 << 2) 
+#define SHALL_DISABLE_ZIGBEE            (1U << 2) 
 
 #ifdef DEEP_SLEEP
 // Command to stop the deep sleep functionality at all. This is required
 // while OTA is updating the firmware. New events shall no reschedule the
 // deep sleep timer
-#define SHALL_STOP_DEEP_SLEEP						(1 << 3)
+#define SHALL_STOP_DEEP_SLEEP						(1U << 3)
 
 // Command to start the deel sleep functionality. When the main loop starts
 // and when the OTA is cancelled
-#define SHALL_START_DEEP_SLEEP					(1 << 4)
+#define SHALL_START_DEEP_SLEEP					(1U << 4)
 #endif
 
 extern EventGroupHandle_t report_event_group_handle;
@@ -76,12 +76,14 @@ extern EventGroupHandle_t main_event_group_handle;
 #ifdef DEEP_SLEEP
 extern QueueHandle_t deep_sleep_queue_handle;
 extern TaskHandle_t deep_sleep_task_handle;
-
+extern bool allow_report_to_coordinator;
 
 TickType_t dm_deep_sleep_time_ms();
 #endif
 
 void gm_counter_set(const esp_zb_uint48_t *new_value);
 int32_t time_diff_ms(const struct timeval *other);
+
+#define COUNTER_INCREMENT_DEBOUNCE_TIME	3000 // milliseconds, blocks gas counter to increment the value for this period of time
 
 #endif // ESP_ZB_GAS_METER_H

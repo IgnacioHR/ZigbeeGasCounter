@@ -446,8 +446,8 @@ void zb_command_handler(esp_zb_zcl_command_send_status_message_t message)
 esp_err_t update_reporting(esp_zb_zcl_attr_location_info_t *attr_location, uint32_t min_change)
 {
     esp_zb_zcl_reporting_info_t *attr_reporting_info = esp_zb_zcl_find_reporting_info(*attr_location);
-    attr_reporting_info->u.send_info.max_interval = (uint16_t)MUST_SYNC_MINIMUM_TIME;
-    attr_reporting_info->u.send_info.min_interval = (uint16_t)(TIME_TO_SLEEP_ZIGBEE_ON / 2000UL);
+    attr_reporting_info->u.send_info.max_interval = (uint16_t)(MUST_SYNC_MINIMUM_TIME + 60);
+    attr_reporting_info->u.send_info.min_interval = (uint16_t)MUST_SYNC_MINIMUM_TIME;
     esp_zb_uint48_t attr_reporting_delta = {
         .low = min_change,
         .high = 0
@@ -793,26 +793,20 @@ void gm_main_loop_zigbee_task(void *arg)
         // all bits to be set.
         EventBits_t uxBits = xEventGroupWaitBits(report_event_group_handle
             ,CURRENT_SUMMATION_DELIVERED_REPORT 
+            | STATUS_REPORT | EXTENDED_STATUS_REPORT 
             #ifdef MEASURE_INSTANTANEOUS_DEMAND
             | INSTANTANEOUS_DEMAND_REPORT
             #endif
-            | STATUS_REPORT | EXTENDED_STATUS_REPORT 
             #ifdef MEASURE_BATTERY_LEVEL
             | BATTERY_REPORT
             #endif
             ,pdTRUE
-            //#if defined(DEEP_SLEEP)
-            //,pdTRUE
-            //,pdMS_TO_TICKS(250)
-            //#else
             ,pdFALSE
             ,portMAX_DELAY
-            //#endif
         );
         if (!leaving_network && esp_zb_bdb_dev_joined()) {
             if (uxBits != 0) {
-                // Note we must manually clear the bits to avoid infinite loop
-                xEventGroupClearBits(report_event_group_handle, uxBits);
+                // Note we must manually clear the bits to avoid infinite loops
                 esp_zb_zcl_status_t status = ESP_ZB_ZCL_STATUS_SUCCESS;
                 ESP_LOGI(TAG, "Reporting to client Sum=%s, Instant=%s, Bat=%s, Status=%s, Exten=%s"
                     ,((uxBits & CURRENT_SUMMATION_DELIVERED_REPORT) != 0) ? "Yes": "No"
@@ -829,11 +823,6 @@ void gm_main_loop_zigbee_task(void *arg)
                     ,((uxBits & STATUS_REPORT) != 0) ? "Yes": "No"
                     ,((uxBits & EXTENDED_STATUS_REPORT) != 0) ? "Yes": "No"
                 );
-                if (led_is_on()) {
-                    led_off();
-                } else {
-                    led_on();
-                }
                 if (esp_zb_lock_acquire(portMAX_DELAY)) {
                     status = zb_radio_setup_report_values(uxBits);
                     if (status == ESP_ZB_ZCL_STATUS_SUCCESS) {
@@ -847,13 +836,14 @@ void gm_main_loop_zigbee_task(void *arg)
                     last_summation_sent <<= 32;
                     last_summation_sent |= current_summation_delivered.low;
                 }
-                #ifdef DEEP_SLEEP
-                if (deep_sleep_task_handle != NULL) {
-                    TickType_t deep_sleep_time = dm_deep_sleep_time_ms();
-                    if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
-                        ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
-                }
-                #endif
+                // #ifdef DEEP_SLEEP
+                // if (deep_sleep_task_handle != NULL) {
+                //     TickType_t deep_sleep_time = dm_deep_sleep_time_ms();
+                //     if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
+                //         ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
+                // }
+                // #endif
+                xEventGroupClearBits(report_event_group_handle, uxBits);
             }
         }
     }
@@ -952,8 +942,8 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_ZDO_SIGNAL_PRODUCTION_CONFIG_READY:
         esp_zb_set_node_descriptor_manufacturer_code(manufacturer_code);
         break;
+    #ifdef LIGHT_SLEEP
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
-        #ifdef LIGHT_SLEEP
         if (!esp_zb_bdb_dev_joined()) {
             break;
         }
@@ -968,12 +958,15 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         led_off();
         esp_zb_sleep_now();
         ESP_LOGI(TAG, "Wake up from sleep: Reason %d", esp_sleep_get_wakeup_cause());
-        #endif
         break;
+    #endif
     case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:
         ESP_LOGW(TAG, "Device unavailable signal received");
         esp_zb_zdo_device_unavailable_params_t *unavail_params = (esp_zb_zdo_device_unavailable_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGW(TAG, "Device with short address 0x%04x is unavailable", unavail_params->short_addr);
+        ESP_LOGW("Long address", "IEEE Address: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+         unavail_params->long_addr[7], unavail_params->long_addr[6], unavail_params->long_addr[5], unavail_params->long_addr[4],
+         unavail_params->long_addr[3], unavail_params->long_addr[2], unavail_params->long_addr[1], unavail_params->long_addr[0]);
         break;
     default:
         ESP_LOGD(TAG, "ZDO signal: %s (0x%x), status: %s", esp_zb_zdo_signal_to_string(sig_type), sig_type, esp_err_to_name(err_status));
