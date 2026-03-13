@@ -50,10 +50,12 @@
 const char *TAG = "GAS_COUNTER";
 
 // Last time a pulse was received
-// RTC_DATA_ATTR struct timeval last_pulse_time;
 
 // last time an interrupt occurred
-struct timeval last_interrupt_time;
+RTC_DATA_ATTR struct timeval last_interrupt_time;
+
+RTC_DATA_ATTR int last_reel_state;
+RTC_DATA_ATTR struct timeval last_reel_state_chage_time;
 
 // gracie period to avoid entering deep sleep when the zigbee radio has been turned on
 #ifdef FEATURE_DEEP_SLEEP
@@ -98,7 +100,9 @@ QueueHandle_t deep_sleep_queue_handle = NULL;
 TimerHandle_t reset_instantaneous_demand_timer = NULL;
 #endif
 TimerHandle_t deep_sleep_timer = NULL;
+#ifdef FEATURE_LIGHT_SLEEP
 TimerHandle_t periodic_checks_timer = NULL;  // Timer for periodic radio/battery checks (event-driven instead of polling)
+#endif
 EventGroupHandle_t report_event_group_handle = NULL;
 EventGroupHandle_t main_event_group_handle = NULL;
 
@@ -225,8 +229,23 @@ int32_t time_diff_ms(const struct timeval *other)
 {
     struct timeval now;
     gettimeofday(&now, NULL);
-    int32_t time_diff = (now.tv_sec - other->tv_sec) * 1000 + (now.tv_usec - other->tv_usec) / 1000;
+    int32_t time_diff = (now.tv_sec - other->tv_sec) * 1000L + (now.tv_usec - other->tv_usec) / 1000L;
     return time_diff;
+}
+
+bool check_reel_state_change_is_ok(int level) {
+    bool is_ok = last_reel_state_chage_time.tv_sec == 0 && last_reel_state_chage_time.tv_usec == 0;
+    if (!is_ok) {
+        int32_t elapsed_time_since_last_state_change = time_diff_ms(&last_reel_state_chage_time);
+        // ESP_LOGI(TAG, "Elapsed time since last state change %ld", elapsed_time_since_last_state_change);
+        is_ok = level != last_reel_state && elapsed_time_since_last_state_change > 150;
+    }
+    if (is_ok) {
+        // transition detected
+        last_reel_state = level;
+        gettimeofday(&last_reel_state_chage_time, NULL);
+    }
+    return is_ok;
 }
 
 // Check conditions to enable radio.
@@ -261,7 +280,7 @@ void check_shall_measure_battery()
 {
     bool measure_battery =
         (last_battery_measurement_time.tv_sec == 0 && last_battery_measurement_time.tv_usec == 0) ||
-        (time_diff_ms(&last_battery_measurement_time) / 1000 >= MUST_SYNC_MINIMUM_TIME);
+        (time_diff_ms(&last_battery_measurement_time) / 1000 >= MEASURE_BATTERY_VOLTAGE_TIME);
     if (measure_battery)
     {
         // battery voltage is measured with zigbee radio
@@ -272,6 +291,7 @@ void check_shall_measure_battery()
 }
 #endif
 
+#ifdef FEATURE_LIGHT_SLEEP
 // Periodic callback to check if radio or battery measurement is needed
 // Called every MUST_SYNC_MINIMUM_TIME seconds instead of polling every 250ms
 void periodic_checks_callback(TimerHandle_t xTimer)
@@ -281,6 +301,7 @@ void periodic_checks_callback(TimerHandle_t xTimer)
     #endif
     check_shall_enable_radio();
 }
+#endif
 
 #ifdef FEATURE_MEASURE_FLOW_RATE
 // After two consecutive values of current_summation_delivered this method
@@ -332,7 +353,7 @@ void gm_compute_instantaneous_demand(int time_diff_ms, bool fromISR)
 #endif
 
 // Adds one to current_summation_delivered and nothing else
-void gm_counter_increment(const struct timeval *now, bool fromISR)
+void gm_counter_increment(bool fromISR)
 {
     led_on();
     current_summation_delivered.low += 1; // Adds up 1 cent of m³
@@ -399,7 +420,6 @@ TickType_t dm_deep_sleep_time_ticks()
     ESP_LOGD(TAG, "Start one-shot timer for %ldms to enter the deep sleep", before_deep_sleep_time_ticks);
     return before_deep_sleep_time_ticks;
 }
-
 
 // task to govern the deep sleep timeout
 void deep_sleep_controller_task(void *arg)
@@ -773,10 +793,12 @@ void gm_main_loop_task(void *arg)
                 if (xQueueSendToFront(deep_sleep_queue_handle, &deep_sleep_time, pdMS_TO_TICKS(100)) != pdTRUE)
                     ESP_LOGE(TAG, "Can't reschedule deep sleep timer");
             } else {
-                ESP_LOGI(TAG, "Will wait for %ds ... to start deep sleep", -elapsed);
+                ESP_LOGI(TAG, "Will wait for %ds ... to start deep sleep", -(elapsed/1000));
             }
         }
         #endif
+        int level = gpio_get_level(PULSE_PIN);
+        check_reel_state_change_is_ok(level);
     }
 }
 
@@ -866,15 +888,18 @@ esp_err_t gm_deep_sleep_init()
                 #endif
                 // check_gpio_time = true;
                 int level = gpio_get_level(PULSE_PIN);
+                bool is_ok = check_reel_state_change_is_ok(level);
                 // if PULSE_PIN is low AND check_gpio_time is true we
                 // miss the interrupt so count it now
-                if (!exception_pulse_button_on_hold && level == 1)
-                {
-                    gm_counter_increment(&gpio_time, false);
-                }
-                else if (exception_pulse_button_on_hold && level == 0)
-                { // rare, but not impossible
-                    exception_pulse_button_on_hold = false;
+                if (is_ok) {
+                    if (!exception_pulse_button_on_hold && level == 1)
+                    {
+                        gm_counter_increment(false);
+                    }
+                    else if (exception_pulse_button_on_hold && level == 0)
+                    { // rare, but not impossible
+                        exception_pulse_button_on_hold = false;
+                    }
                 }
                 #ifdef FEATURE_DEEP_SLEEP
                 else
@@ -942,21 +967,22 @@ esp_err_t gm_deep_sleep_init()
 // PULSE_PIN - GPIO Interruption handler
 void IRAM_ATTR gpio_pulse_isr_handler(void *arg)
 {
-    struct timeval now;
-    gettimeofday(&now, NULL);
     if ((last_interrupt_time.tv_sec != 0 || last_interrupt_time.tv_usec != 0) && time_diff_ms(&last_interrupt_time) <= REED_DEBOUNCE_TIMEOUT)
     {
         return; // DEBOUNCE
     }
+    struct timeval now;
+    gettimeofday(&now, NULL);
     last_interrupt_time.tv_sec = now.tv_sec;
     last_interrupt_time.tv_usec = now.tv_usec;
 
     // Increment current_summation_delivery
     // read pin to determine failing or raising edge
     int level = gpio_get_level(PULSE_PIN);
-    if (level == 1)
+    bool is_ok = check_reel_state_change_is_ok(level);
+    if (is_ok && level == 1)
     {
-        gm_counter_increment(&now, true);
+        gm_counter_increment(true);
     }
 }
 
@@ -1150,10 +1176,12 @@ void app_main(void)
 
     // Periodic timer for radio/battery checks (replaces 250ms polling)
     // Set period to slightly less than MUST_SYNC_MINIMUM_TIME to ensure checks happen
+    #ifdef FEATURE_LIGHT_SLEEP
     ESP_ERROR_CHECK((periodic_checks_timer = xTimerCreate("periodic_checks", pdMS_TO_TICKS(MUST_SYNC_MINIMUM_TIME * 1000 - 100), pdTRUE, "p_c", periodic_checks_callback)) == NULL ? ESP_FAIL : ESP_OK);
     if (periodic_checks_timer != NULL) {
         xTimerStart(periodic_checks_timer, 0);
     }
+    #endif
 
     #ifdef FEATURE_DEEP_SLEEP
     ESP_ERROR_CHECK((deep_sleep_queue_handle = xQueueCreate(1, sizeof(TickType_t))) == NULL ? ESP_FAIL : ESP_OK);

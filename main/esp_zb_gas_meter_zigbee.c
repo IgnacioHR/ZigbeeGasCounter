@@ -859,12 +859,18 @@ void gm_main_loop_zigbee_task(void *arg)
                     ,((uxBits & STATUS_REPORT) != 0) ? "Yes": "No"
                     ,((uxBits & EXTENDED_STATUS_REPORT) != 0) ? "Yes": "No"
                 );
-                if (esp_zb_lock_acquire(portMAX_DELAY)) {
+                if (esp_zb_lock_acquire(pdMS_TO_TICKS(1000))) {
                     status = zb_radio_setup_report_values(uxBits);
+                    #ifdef FEATURE_DEEP_SLEEP
+                    // under deep sleep mode we must send the values regardless of the
+                    // schedule set in the attribute reporting configuration
                     if (status == ESP_ZB_ZCL_STATUS_SUCCESS) {
                         status = zb_radio_send_values(uxBits);
                     }
+                    #endif
                     esp_zb_lock_release();
+                } else {
+                    ESP_LOGE(TAG, "Can't get zb lock after 1 second");
                 }
                 if (status == ESP_ZB_ZCL_STATUS_SUCCESS) {
                     gettimeofday(&last_report_sent_time, NULL);

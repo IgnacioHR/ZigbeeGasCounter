@@ -98,6 +98,8 @@ extern const char *TAG;
 // Main group events
 #ifdef FEATURE_MEASURE_BATTERY_LEVEL
 #define SHALL_MEASURE_BATTERY           (1U << 0)
+// 1 hour in seconds
+#define MEASURE_BATTERY_VOLTAGE_TIME		(60 * 60)
 #endif
 #define SHALL_ENABLE_ZIGBEE             (1U << 1)
 // this is not implemented because of lack of support from esp-zigbee-sdk
