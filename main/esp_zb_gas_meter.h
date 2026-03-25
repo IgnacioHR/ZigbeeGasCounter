@@ -131,6 +131,4 @@ TickType_t dm_deep_sleep_time_ticks();
 esp_err_t gm_counter_set(const esp_zb_uint48_t *new_value);
 int32_t time_diff_ms(const struct timeval *other);
 
-#define COUNTER_INCREMENT_DEBOUNCE_TIME	3000 // milliseconds, blocks gas counter to increment the value for this period of time
-
 #endif // ESP_ZB_GAS_METER_H
