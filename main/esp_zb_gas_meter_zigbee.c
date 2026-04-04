@@ -764,6 +764,16 @@ void esp_zb_task(void *pvParameters)
     ESP_ERROR_CHECK(esp_zb_zcl_start_attr_reporting(percentage_location_info));
     ESP_ERROR_CHECK(update_reporting(&percentage_location_info, 0));
 
+    esp_zb_zcl_attr_location_info_t  battery_voltage_location_info = {
+        .attr_id = ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID,
+        .cluster_id = ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
+        .cluster_role = ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+        .endpoint_id = MY_METERING_ENDPOINT,
+        .manuf_code = ESP_ZB_ZCL_ATTR_NON_MANUFACTURER_SPECIFIC
+    };
+    ESP_ERROR_CHECK(esp_zb_zcl_start_attr_reporting(battery_voltage_location_info));
+    ESP_ERROR_CHECK(update_reporting(&battery_voltage_location_info, 0));
+    
     esp_zb_zcl_attr_location_info_t  battery_alarm_state_location_info = {
         .attr_id = ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_ALARM_STATE_ID,
         .cluster_id = ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
