@@ -481,13 +481,15 @@ void btn_press_task(void *arg)
         }
         TickType_t current_time_since_press = xTimerGetPeriod(timer_since_press_handler);
         TickType_t current_time_since_hold = xTimerGetPeriod(t_detect_hold);
-        TickType_t click_press_time_adjusted = CLICK_PRESS_TIME_MS;
-        TickType_t hold_time_adjusted = CLICK_HOLD_TIME_MS;
+        TickType_t click_press_time_adjusted = pdMS_TO_TICKS(CLICK_PRESS_TIME_MS);
+        TickType_t hold_time_adjusted = pdMS_TO_TICKS(CLICK_HOLD_TIME_MS);
         #ifdef FEATURE_DEEP_SLEEP
         if (started_from_deep_sleep)
         {
-            click_press_time_adjusted = pdMS_TO_TICKS(click_press_time_adjusted - 150); // measured time for the device to start
-            hold_time_adjusted -= pdMS_TO_TICKS(hold_time_adjusted - 150);
+            TickType_t startTime = pdMS_TO_TICKS(150);
+            // substract 150 ms to timers
+            click_press_time_adjusted = click_press_time_adjusted - startTime; // measured time for the device to start
+            hold_time_adjusted -= hold_time_adjusted - startTime;
         }
         #endif
         if (current_time_since_press != click_press_time_adjusted && xTimerChangePeriod(timer_since_press_handler, click_press_time_adjusted, pdMS_TO_TICKS(100)) != pdPASS)

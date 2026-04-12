@@ -557,8 +557,16 @@ void esp_zb_task(void *pvParameters)
     };
 
     esp_zb_attribute_list_t *esp_zb_power_cluster = esp_zb_power_config_cluster_create(&power_cfg);
-    ESP_ERROR_CHECK(esp_zb_power_config_cluster_add_attr(esp_zb_power_cluster,
+
+    // ESP_ERROR_CHECK(esp_zb_power_config_cluster_add_attr(esp_zb_power_cluster,
+    //                                     ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID,
+    //                                     &battery_voltage));
+
+    ESP_ERROR_CHECK(esp_zb_cluster_add_attr(esp_zb_power_cluster,
+                                        ESP_ZB_ZCL_CLUSTER_ID_POWER_CONFIG,
                                         ESP_ZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID,
+                                        ESP_ZB_ZCL_ATTR_TYPE_U8,  // Tipo uint8_t
+                                        ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING,
                                         &battery_voltage));
 
     ESP_ERROR_CHECK(esp_zb_power_config_cluster_add_attr(esp_zb_power_cluster,
