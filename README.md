@@ -61,15 +61,16 @@ Once a gesture is recognized, the functionality attached, if any, is raised:
 
 ## Project Status
 
+April 23rd 2026 - First results of battery total duration in Light-Sleep and Deep-Sleep configurations. See below. OTA issues are now fixed
 March 2nd 2026 - Now testing in LIGHT_SLEEP mode.This project is in testing phase. It is now deployed for real gas consumption measurement at home.
 
 Remaining issues are:
 
-* Voltage value is not transmitted to the server as part of the value report (in zigbee terms) I actually I know i can force read the value from the server but I don't know how to push the value from the device to the server.
+* (Voltage should be transmitted now, but this is not fully tested) Voltage value is not transmitted to the server as part of the value report (in zigbee terms) I actually I know i can force read the value from the server but I don't know how to push the value from the device to the server.
 
-* The initial decission about using a 2S LiPo battery causes more troubles than benefits. I finally decided to go 1S LiPo battery and use the internal Seed-Studio 3v switching regulator and charger module.
+* (This is now a lesson learned, not an issue) The initial decission about using a 2S LiPo battery causes more troubles than benefits. I finally decided to go 1S LiPo battery and use the internal Seed-Studio 3v switching regulator and charger module.
 
-* OTA is no longer functional at all. I know about changes around OTA functionality in zigbee2mqtt and more testing is required.
+* (April 2026 this is now fixed) OTA is no longer functional at all. I know about changes around OTA functionality in zigbee2mqtt and more testing is required.
 
 ### What is missing and how you can help
 
@@ -78,8 +79,13 @@ See the **Project Status** section above for specific issues. If you can help I'
 For discussions and contributions, please join the ongoing thread on the Home Assistant Community: 👉 [Zigbee Gas Counter](https://community.home-assistant.io/t/zigbee-gas-counter/833557)
 
 One of my main concerns is **power consumption and battery life**. The software includes battery status measuring and reporting.
+#### First comparison analysis of the battery duration under Light-Sleep and Deep-Sleep configurations
+![Main device](images/BatteryConsumptionRealLightSleepVSDeepSleep.png)
+
+I've recently seen [this video](https://youtu.be/KE7bOYCYETM?si=DaY46TMaGhLbYbze) from @"Microamp Home" on YT and it looks worth testing using one of the devices from Nordic Semiconductors.
 
 Currently, the testing prototype runs on a Seed Studio ESP32-C6, but the long-term goal is to use only the **ESP32-C6 chip**, eliminating unnecessary components. To achieve this, I will need help reviewing schematics and PCB designs, as **I’m not an expert in hardware design—just an enthusiast**. If you have experience in this area, your input would be greatly appreciated.
+
 
 ## Getting Started
 
