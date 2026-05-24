@@ -54,7 +54,7 @@ const char *TAG = "GAS_COUNTER";
 // last time an interrupt occurred
 RTC_DATA_ATTR struct timeval last_interrupt_time;
 
-RTC_DATA_ATTR int last_reel_state;
+// RTC_DATA_ATTR int last_reel_state;
 RTC_DATA_ATTR struct timeval last_reel_state_chage_time;
 
 // gracie period to avoid entering deep sleep when the zigbee radio has been turned on
@@ -238,11 +238,11 @@ bool check_reel_state_change_is_ok(int level) {
     if (!is_ok) {
         int32_t elapsed_time_since_last_state_change = time_diff_ms(&last_reel_state_chage_time);
         // ESP_LOGI(TAG, "Elapsed time since last state change %ld", elapsed_time_since_last_state_change);
-        is_ok = level != last_reel_state && elapsed_time_since_last_state_change > 150;
+        is_ok = /*level != last_reel_state &&*/ elapsed_time_since_last_state_change > 150;
     }
     if (is_ok) {
         // transition detected
-        last_reel_state = level;
+        // last_reel_state = level;
         gettimeofday(&last_reel_state_chage_time, NULL);
     }
     return is_ok;

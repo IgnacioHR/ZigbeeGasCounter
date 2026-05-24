@@ -74,7 +74,9 @@ uint16_t manufacturer_code = HW_MANUFACTURER_CODE;
 uint8_t summation_formatting = ESP_ZB_ZCL_METERING_FORMATTING_SET(true, 7, 2) ;// 0x72;
 
 // Formatting instantaneous demand with 3 decimal places
+#ifdef FEATURE_MEASURE_FLOW_RATE
 uint8_t demand_formatting = ESP_ZB_ZCL_METERING_FORMATTING_SET(true, 2, 3) ;//0x23; 
+#endif
 
 // Gas metering type
 uint8_t metering_device_type = ESP_ZB_ZCL_METERING_GAS_METERING; 
@@ -676,7 +678,7 @@ void esp_zb_task(void *pvParameters)
                                         ESP_ZB_ZCL_ATTR_TYPE_S24,  // Tipo int24_t con signo
                                         ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING,
                                         &instantaneous_demand));
-    #endif
+
 
     ESP_ERROR_CHECK(esp_zb_cluster_add_attr(esp_zb_metering_server_cluster,
                                         ESP_ZB_ZCL_CLUSTER_ID_METERING,
@@ -684,6 +686,7 @@ void esp_zb_task(void *pvParameters)
                                         ESP_ZB_ZCL_ATTR_TYPE_U8,  // Tipo uint8_t
                                         ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY,
                                         &demand_formatting));
+    #endif
 
     #ifdef FEATURE_WRITE_COUNTER_VALUE
     ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(esp_zb_metering_server_cluster,
