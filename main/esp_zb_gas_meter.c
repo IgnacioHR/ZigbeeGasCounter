@@ -44,7 +44,7 @@
 #define NVS_KEY "counter"
 
 #ifdef FEATURE_MEASURE_FLOW_RATE
-#define TIME_TO_RESET_INSTANTANEOUS_D UINT32_C(TIME_TO_SLEEP_ZIGBEE_ON - 2000)
+#define TIME_TO_RESET_INSTANTANEOUS_D UINT32_C(12000)
 #endif
 
 const char *TAG = "GAS_COUNTER";
@@ -56,6 +56,10 @@ RTC_DATA_ATTR struct timeval last_interrupt_time;
 
 // RTC_DATA_ATTR int last_reel_state;
 RTC_DATA_ATTR struct timeval last_reel_state_chage_time;
+
+#ifdef FEATURE_MEASURE_FLOW_RATE
+RTC_DATA_ATTR struct timeval last_increment_time;
+#endif
 
 // gracie period to avoid entering deep sleep when the zigbee radio has been turned on
 #ifdef FEATURE_DEEP_SLEEP
@@ -379,8 +383,9 @@ void gm_counter_increment(bool fromISR)
         xTaskNotifyGive(save_counter_task_handle);
     }
     #ifdef FEATURE_MEASURE_FLOW_RATE
-    if (compute_instantaneous_demand)
-        gm_compute_instantaneous_demand(time_diff_ms, fromISR);
+        if (last_increment_time.tv_sec != 0 && last_increment_time.tv_usec != 0)
+            gm_compute_instantaneous_demand(time_diff_ms(&last_increment_time), fromISR);
+        gettimeofday(&last_increment_time, NULL);
     #endif
 }
 
